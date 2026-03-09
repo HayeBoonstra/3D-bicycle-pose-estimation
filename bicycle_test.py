@@ -2,7 +2,7 @@ import mujoco
 import mujoco.viewer
 import time
 
-model = mujoco.MjModel.from_xml_path("bicycle.xml")
+model = mujoco.MjModel.from_xml_path("world.xml")
 data = mujoco.MjData(model)
 
 viewer = mujoco.viewer.launch_passive(model, data)
