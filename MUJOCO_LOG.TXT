@@ -4,3 +4,33 @@ WARNING: Nan, Inf or huge value in QACC at DOF 5. The simulation is unstable. Ti
 Tue Mar 10 10:52:31 2026
 WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 2.8400.
 
+Tue Mar 10 14:48:48 2026
+ERROR: Python exception raised
+
+Tue Mar 10 14:48:55 2026
+ERROR: Python exception raised
+
+Tue Mar 10 14:49:17 2026
+ERROR: Python exception raised
+
+Tue Mar 10 14:49:36 2026
+ERROR: Python exception raised
+
+Tue Mar 10 14:49:37 2026
+ERROR: Python exception raised
+
+Tue Mar 10 14:49:39 2026
+ERROR: Python exception raised
+
+Tue Mar 10 14:49:40 2026
+ERROR: Python exception raised
+
+Tue Mar 10 14:55:52 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 4. The simulation is unstable. Time = 4.7100.
+
+Tue Mar 10 14:57:21 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 18.4900.
+
+Tue Mar 10 14:58:42 2026
+WARNING: Nan, Inf or huge value in QACC at DOF 0. The simulation is unstable. Time = 15.3000.
+
