@@ -2,6 +2,7 @@ import mujoco
 import mujoco.viewer
 import time
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 def controller(model, data):
     steering_angle_controller(model, data)
@@ -11,7 +12,7 @@ def steering_angle_controller(model, data):
     # Extract the lean/roll angle from data.qpos and apply it to data.ctrl[1]
     # Assuming roll angle is data.qpos[2] (for a typical freejoint: [x, y, z, qw, qx, qy, qz])
     # For a mujoco freejoint, orientation is quaternion, need to extract roll from quaternion (qw, qx, qy, qz = qpos[3:7])
-    from scipy.spatial.transform import Rotation as R
+
     Kp1 = 50
     Kp2 = 40
 
@@ -37,7 +38,7 @@ def velocity_controller(model, data):
     vel_body = rot.inv().apply(vel_world)
     current_velocity = vel_body[0]  # forward (body X) velocity
     error =  target_velocity - current_velocity
-    Kp = 10
+    Kp = 100
     data.ctrl[0] = Kp * error
 
 model = mujoco.MjModel.from_xml_path("world.xml")

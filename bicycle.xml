@@ -1,15 +1,14 @@
 
         <mujoco model="bicycle">
             <compiler angle="degree" coordinate="local"/>
-            <option timestep="0.01" gravity="0 0 -9.81"/>
+            <option timestep="0.01" gravity="0 0 -9.81" noslip_iterations="15"/>
             
         <asset>
-            <mesh name="wheel_torus" builtin="supertorus" params="64 0.025 1 1" scale="0.35 0.35 0.35"/>
+            <mesh name="wheel_torus" builtin="supertorus" params="64 0.04 1 1" scale="0.35 0.35 0.35"/>
         </asset>
         
             <default>
                 <joint limited="true" damping="0.01"/>
-                <geom friction="0.8 0.1 0.1" rgba="0.8 0.6 0.4 1"/>
             </default>
 
             
@@ -17,34 +16,59 @@
             <body name="bicycle" pos="0 0 0.35">
                 <freejoint name="bicycle_free"/>
                 <body name="frame" pos="0 0 0">
-                    <geom name="seat tube" type="capsule" fromto="0.0 0.0 0.0  -0.076545205528036 0.0 0.5446474378078637" size="0.016"/>
-                    <geom name="down tube" type="capsule" fromto="0.0 0.0 0.0  0.46371960525899625 0.0 0.5418011782380016" size="0.016"/>
-                    <geom name="top tube" type="capsule" fromto="0.46371960525899625 0.0 0.5418011782380016  -0.076545205528036 0.0 0.5446474378078637" size="0.016"/>
-                    <geom name="chain stay left" type="capsule" fromto="-0.02 -0.02 0.0  -0.4 -0.02 0.03" size="0.016"/>
-                    <geom name="chain stay right" type="capsule" fromto="-0.02 0.02 0.0  -0.4 0.02 0.03" size="0.016"/>
-                    <geom name="seat stay left" type="capsule" fromto="-0.4 -0.02 0.03  -0.076545205528036 0.0 0.5446474378078637" size="0.016"/>
-                    <geom name="seat stay right" type="capsule" fromto="-0.4 0.02 0.03  -0.076545205528036 0.0 0.5446474378078637" size="0.016"/>
-                    <body name="rear wheel" pos="-0.4 0.0 0.03" euler="90 0 0">
+                    <geom name="seat tube" type="capsule" fromto="0.0 0.0 0.0  -0.1423504748063864 0.0 0.5312592044589877" size="0.016"/>
+                    <geom name="seat post" type="capsule" fromto="-0.1423504748063864 0.0 0.5312592044589877  -0.16823237931663848 0.0 0.6278517870878945" size="0.016"/>
+                    <body name="seat" pos="-0.16823237931663848 0.0 0.6278517870878945">
+                        <geom name="seat" type="box" size="0.1 0.04 0.01"/>
+                    </body>
+                    <geom name="down tube" type="capsule" fromto="0.0 0.0 0.0  0.425253080816971 0.0 0.5850627629637268" size="0.016"/>
+                    <geom name="top tube" type="capsule" fromto="0.425253080816971 0.0 0.5850627629637268  -0.1423504748063864 0.0 0.5312592044589877" size="0.016"/>
+                    <geom name="chain stay left" type="capsule" fromto="-0.02 -0.02 0.0  -0.43 -0.02 0.05" size="0.016"/>
+                    <geom name="chain stay right" type="capsule" fromto="-0.02 0.02 0.0  -0.43 0.02 0.05" size="0.016"/>
+                    <geom name="seat stay left" type="capsule" fromto="-0.43 -0.02 0.05  -0.12811542732574777 0.0 0.4781332840130889" size="0.016"/>
+                    <geom name="seat stay right" type="capsule" fromto="-0.43 0.02 0.05  -0.12811542732574777 0.0 0.4781332840130889" size="0.016"/>
+                    <body name="rear wheel" pos="-0.43 0.0 0.05" euler="90 0 0">
                         <joint name="rear wheel hinge" type="hinge" axis="0 0 -1" pos="0 0 0" limited="false"/>
-                        <geom name="rear wheel geom" type="mesh" mesh="wheel_torus" rgba="0.1 0.1 0.1 1" contype="2" conaffinity="2"/>
+                        <geom name="rear wheel contact" type="cylinder" size="0.35559999999999997 0.015" rgba="0.1 0.1 0.1 0" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
+                        <geom name="rear wheel geom" type="mesh" mesh="wheel_torus" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
                     </body>
                 </body>
-                <body name="front fork" pos="0.65 0.0 0.03" euler="0 -20.0 0">
+                <body name="front fork" pos="0.6200000000000001 0.0 0.05" euler="0 -20.0 0">
                     <joint name="steer" type="hinge" axis="0 0 1" pos="0 0 0" range="-35 35"/>
-                    <geom name="head tube" type="capsule" fromto="0 0 0.5446474378078637 0 0 0.6446474378078637" size="0.016"/>
-                    <geom name="handlebar" type="capsule" fromto="0 -0.15 0.6446474378078637 0 0.15 0.6446474378078637" size="0.016"/>
-                    <geom name="fork left" type="capsule" fromto="0 -0.02 0 0 -0.02 0.5446474378078637" size="0.016"/>
-                    <geom name="fork right" type="capsule" fromto="0 0.02 0 0 0.02 0.5446474378078637" size="0.016"/>
+                    <geom name="head tube" type="capsule" fromto="0 0 0.5694018992255457 0 0 0.6694018992255457" size="0.016"/>
+                    <geom name="handlebar" type="capsule" fromto="0 -0.15 0.6694018992255457 0 0.15 0.6694018992255457" size="0.016"/>
+                    <geom name="fork left" type="capsule" fromto="0 -0.02 0 0 -0.02 0.5694018992255457" size="0.016"/>
+                    <geom name="fork right" type="capsule" fromto="0 0.02 0 0 0.02 0.5694018992255457" size="0.016"/>
                     <body name="front wheel" pos="0 0 0" euler="90 0 0">
                         <joint name="front wheel hinge" type="hinge" axis="0 0 -1" pos="0 0 0" limited="false"/>
-                        <geom name="front wheel geom" type="mesh" mesh="wheel_torus" rgba="0.1 0.1 0.1 1" contype="2" conaffinity="2"/>
+                        <geom name="front wheel contact" type="cylinder" size="0.35559999999999997 0.015" rgba="0.1 0.1 0.1 0" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
+                        <geom name="front wheel geom" type="mesh" mesh="wheel_torus" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
                     </body>
                 </body>
+                <body name="pedals" pos="0 0 0">
+                    <joint name="pedals" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
+                    <geom name="left_crank" type="capsule" fromto="0 -0.06 0 0 -0.06 -0.175" size="0.016"/>
+                    <geom name="right_crank" type="capsule" fromto="0 0.06 0 0 0.06 0.175" size="0.016"/>
+                    <body name="left_pedal" pos="0 -0.14400000000000002 -0.175" euler="180 0 0">
+                        <joint name="left_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
+                        <geom name="left_pedal" type="box" size="0.04 0.06 0.01"/>
+                    </body>
+                    <body name="right_pedal" pos="0 0.14400000000000002 0.175">
+                        <joint name="right_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
+                        <geom name="right_pedal" type="box" size="0.04 0.06 0.01"/>
+                    </body>
+                </body>
+
             </body>
         </worldbody>
             
+        <equality>
+            <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 1.4 0 0 0"/>
+        </equality>
+        
+            
         <actuator>
-            <motor joint="rear wheel hinge"/>
+            <motor name="pedal_drive" joint="pedals"/>
             <motor joint="steer"/>
         </actuator>
         
