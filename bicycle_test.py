@@ -12,8 +12,8 @@ def steering_angle_controller(model, data):
     # Assuming roll angle is data.qpos[2] (for a typical freejoint: [x, y, z, qw, qx, qy, qz])
     # For a mujoco freejoint, orientation is quaternion, need to extract roll from quaternion (qw, qx, qy, qz = qpos[3:7])
     from scipy.spatial.transform import Rotation as R
-    Kp1 = 2
-    Kp2 = 0.5
+    Kp1 = 50
+    Kp2 = 40
 
     # Get quaternion from qpos[3:7]
     quat = data.qpos[3:7]
@@ -24,7 +24,7 @@ def steering_angle_controller(model, data):
     pass
 
 def velocity_controller(model, data):
-    target_velocity = 2.5
+    target_velocity = 3
     # Compute the local forward (bicycle body X) velocity
     # Get the orientation quaternion of the freejoint (qpos[3:7])
     quat = data.qpos[3:7]
@@ -45,12 +45,21 @@ data = mujoco.MjData(model)
 mujoco.set_mjcb_control(controller)
 
 viewer = mujoco.viewer.launch_passive(model, data)
+def update_camera(viewer, data):
+    cam = viewer.cam
+    cam.lookat[:] = data.qpos[0:3]
 
-t = 0.1
-data.qvel[0] = 1
-data.qvel[1] = 0.001
+i = 0
+data.qvel[0] = 0
 while True:
-    t += 0.3
+    i += 1
     mujoco.mj_step(model, data)
     viewer.sync()
+    if i%1000 == 0 and i > 0:
+        data.qfrc_applied[1] = 1000
+        print("Applying force to steer")
+        i = 0
+    else:
+        data.qfrc_applied[1] = 0
+    update_camera(viewer, data)
     time.sleep(0.01)

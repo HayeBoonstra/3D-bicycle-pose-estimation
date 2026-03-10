@@ -5,10 +5,10 @@ class Bicycle:
         self.wheel_size = 28 * 0.0254
         self.wheel_width = 0.03
         self.frame_size = 0.55 # m (55 cm is standard frame size)
-        self.seat_tube_angle = np.deg2rad(4) # degrees
+        self.seat_tube_angle = np.deg2rad(8) # degrees
         self.wheel_base = 1.05 # between 1.0 and 1.1 meters
         self.hub_raise = 0.03
-        self.fork_angle = np.deg2rad(-10) # degrees
+        self.fork_angle = np.deg2rad(-20) # degrees
         self.fork_height = 0.0
         self.fork_length = 0.0
         self.handlebar_height = 0.1 # m
@@ -20,7 +20,6 @@ class Bicycle:
         self.head_tube = [0.0, 0.0, 0.0]
         self.seat_tube = [0.0, 0.0, 0.0]
         self.wheel_clearance = 0.02
-        self.wheel_clearance = 0.0
     
     def create_bicycle_variables(self):
         ## fork geometry
@@ -33,7 +32,7 @@ class Bicycle:
 
         ## frame geometry
         self.bottom_bracket = np.array([0.0, 0.0, 0.0])
-        self.rear_hub = self.bottom_bracket + np.array([-0.38, 0.0, self.hub_raise])
+        self.rear_hub = self.bottom_bracket + np.array([-0.4, 0.0, self.hub_raise])
         self.front_hub = self.bottom_bracket + np.array([self.rear_hub[0] + self.wheel_base, 0.0, self.hub_raise])
 
         fork_dir = np.array([np.sin(self.fork_angle), 0.0, np.cos(self.fork_angle)])
@@ -47,7 +46,7 @@ class Bicycle:
         ## create the mujoco XML file
         wheel_xml = f"""
         <asset>
-            <mesh name="wheel_torus" builtin="supertorus" params="32 0.025 1 1" scale="0.35 0.35 0.35"/>
+            <mesh name="wheel_torus" builtin="supertorus" params="64 0.025 1 1" scale="0.35 0.35 0.35"/>
         </asset>
         """
 
