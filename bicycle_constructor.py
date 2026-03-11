@@ -132,7 +132,7 @@ class Bicycle:
         xml_file = f"""
         <mujoco model="bicycle">
             <compiler angle="degree" coordinate="local"/>
-            <option timestep="0.01" gravity="0 0 -9.81" noslip_iterations="15"/>
+            <option timestep="0.005" gravity="0 0 -9.81" noslip_iterations="15"/>
             {wheel_xml}
             <default>
                 <joint limited="true" damping="0.01"/>

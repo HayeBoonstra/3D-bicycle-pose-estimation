@@ -9,16 +9,11 @@ def controller(model, data):
     velocity_controller(model, data)
 
 def steering_angle_controller(model, data):
-    # Extract the lean/roll angle from data.qpos and apply it to data.ctrl[1]
-    # Assuming roll angle is data.qpos[2] (for a typical freejoint: [x, y, z, qw, qx, qy, qz])
-    # For a mujoco freejoint, orientation is quaternion, need to extract roll from quaternion (qw, qx, qy, qz = qpos[3:7])
-
+    # Extract the lean/roll angle from data.qpos and apply it to data.ctrl[1] (steering joint)
     Kp1 = 50
     Kp2 = 40
 
-    # Get quaternion from qpos[3:7]
     quat = data.qpos[3:7]
-    # Convert quaternion to Euler angles (in radians)
     euler = R.from_quat([quat[1], quat[2], quat[3], quat[0]]).as_euler('xyz')
     roll_angle = euler[0]
     data.ctrl[1] = -roll_angle * Kp1 - Kp2 * (data.qpos[8])
@@ -45,6 +40,13 @@ model = mujoco.MjModel.from_xml_path("world.xml")
 data = mujoco.MjData(model)
 mujoco.set_mjcb_control(controller)
 
+# Time control: physics at 200Hz, display at 60Hz
+PHYSICS_HZ = 200
+DISPLAY_HZ = 60
+physics_dt = 1.0 / PHYSICS_HZ
+display_dt = 1.0 / DISPLAY_HZ
+model.opt.timestep = physics_dt
+
 viewer = mujoco.viewer.launch_passive(model, data)
 def update_camera(viewer, data):
     cam = viewer.cam
@@ -52,15 +54,35 @@ def update_camera(viewer, data):
 
 i = 0
 data.qvel[0] = 0
+next_display_time = time.perf_counter()
+next_physics_time = time.perf_counter()
+
+push_impulse = 100 # Ns
+force = push_impulse / physics_dt
 while True:
     i += 1
     mujoco.mj_step(model, data)
-    viewer.sync()
-    if i%1000 == 0 and i > 0:
-        data.qfrc_applied[1] = 1000
+    if i % 1000 == 0 and i > 0:
+        data.qfrc_applied[1] = force
         print("Applying force to steer")
         i = 0
     else:
         data.qfrc_applied[1] = 0
-    update_camera(viewer, data)
-    time.sleep(0.01)
+
+    # Sync viewer and camera at 60Hz only
+    now = time.perf_counter()
+    if now >= next_display_time:
+        viewer.sync()
+        update_camera(viewer, data)
+        next_display_time += display_dt
+        if next_display_time < now:
+            next_display_time = now + display_dt
+
+    # Sleep only the remaining time until next physics tick (accounts for computation time)
+    now = time.perf_counter()
+    sleep_time = next_physics_time - now
+    if sleep_time > 0:
+        time.sleep(sleep_time)
+    next_physics_time += physics_dt
+    if next_physics_time < time.perf_counter():
+        next_physics_time = time.perf_counter()
