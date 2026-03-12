@@ -1,7 +1,5 @@
 
         <mujoco model="bicycle">
-            <compiler angle="degree" coordinate="local"/>
-            <option timestep="0.005" gravity="0 0 -9.81" noslip_iterations="15"/>
             
         <asset>
             <mesh name="wheel_torus" builtin="supertorus" params="64 0.04 1 1" scale="0.35 0.35 0.35"/>
@@ -63,7 +61,7 @@
         </worldbody>
             
         <equality>
-            <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 1.4 0 0 0"/>
+            <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 1.7 0 0 0"/>
         </equality>
         
             
