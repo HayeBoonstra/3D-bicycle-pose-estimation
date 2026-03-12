@@ -1,5 +1,8 @@
 <mujoco model="bicycle world">
+  <compiler angle="degree" coordinate="local"/>
+  <option timestep="0.005" gravity="0 0 -9.81" noslip_iterations="15"/>
   <include file="bicycle.xml"/>
+  <include file="humanoid.xml"/>
 
   <statistic center="0 0 0.55" extent="1.1"/>
 
