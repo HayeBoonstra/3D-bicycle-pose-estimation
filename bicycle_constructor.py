@@ -31,6 +31,23 @@ class Bicycle:
         self.seat_thickness = 0.01
         # Gear ratio: rear wheel revs per pedal rev (e.g. 44/11 = 4)
         self.gear_ratio = 1.4
+
+        ## human variables
+        self.torso_length = 0.48
+        self.torso_width = 0.1
+        self.torso_lean = 15 # degrees
+        self.torso_mass = 0.001
+
+        self.upper_arm_length = 0.4
+        self.upper_arm_width = 0.016
+        self.upper_arm_mass = 0.001
+        self.lower_arm_length = 0.4
+        self.lower_arm_width = 0.016
+        self.lower_arm_mass = 0.001
+        self.hand_length = 0.016
+        self.hand_width = 0.016
+        self.hand_mass = 0.001
+
     
     def create_bicycle_variables(self):
         ## fork geometry
@@ -75,6 +92,8 @@ class Bicycle:
         equality_xml = f"""
         <equality>
             <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 {self.gear_ratio} 0 0 0"/>
+            <weld site1="left hand site" site2="left handlebar site" solref="0.001 1.0"/>
+            <weld site1="right hand site" site2="right handlebar site" solref="0.001 1.0"/>
         </equality>
         """
 
@@ -83,14 +102,38 @@ class Bicycle:
             <body name="bicycle" pos="0 0 0.35">
                 <freejoint name="bicycle_free"/>
                 <body name="frame" pos="0 0 0">
-                    <geom name="seat tube" type="capsule" fromto="{self.bottom_bracket[0]} {self.bottom_bracket[1]} {self.bottom_bracket[2]}  {self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}" size="0.016"/>
-                    <geom name="seat post" type="capsule" fromto="{self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}  {self.seat_tube_post[0]} {self.seat_tube_post[1]} {self.seat_tube_post[2]}" size="0.016"/>
+                    <geom name="seat tube" type="capsule" fromto="{self.bottom_bracket[0]} {self.bottom_bracket[1]} {self.bottom_bracket[2]}  {self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}" size="0.016" contype="4" conaffinity="4"/>
+                    <geom name="seat post" type="capsule" fromto="{self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}  {self.seat_tube_post[0]} {self.seat_tube_post[1]} {self.seat_tube_post[2]}" size="0.016" contype="4" conaffinity="4"/>
                     <body name="seat" pos="{self.seat_tube_post[0]} {self.seat_tube_post[1]} {self.seat_tube_post[2]}">
-                        <geom name="seat" type="box" size="{self.seat_length} {self.seat_width} {self.seat_thickness}"/>
-                        <body name="torso" pos="0 0 0.01">
-                            <geom name="torso" type="capsule" fromto="0 0 0 0 0 0.3" size="0.1"  euler="0 15 0"/>
+                        <geom name="seat" type="box" size="{self.seat_length} {self.seat_width} {self.seat_thickness}" contype="4" conaffinity="4"/>
+                        <body name="torso" pos="0 0 0.01" euler="0 15 0">
+                            <geom name="torso" type="capsule" fromto="0 0 0 0 0 {self.torso_length}" size="{self.torso_width}" contype="4" conaffinity="4" mass="{self.torso_mass}"/>
+                                <body name="left upper arm" pos="0 {self.torso_width/2} {self.torso_length}" euler="0 -15 0">
+                                    <geom name="left upper arm" type="capsule" fromto="0 0 0 0 0 -{self.upper_arm_length}" size="{self.upper_arm_width}" contype="4" conaffinity="4" mass="{self.upper_arm_mass}"/>
+                                    <joint name="left upper arm joint" type="ball" pos="0 0 0" limited="false"/>
+                                    <body name="left lower arm" pos="0 0 -{self.upper_arm_length}" euler="0 0 0">
+                                        <geom name="left lower arm" type="capsule" fromto="0 0 0 0 0 -{self.lower_arm_length}" size="{self.lower_arm_width}" contype="4" conaffinity="4" mass="{self.lower_arm_mass}"/>
+                                        <joint name="left lower arm hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
+                                        <body name="left hand" pos="0 0 -{self.lower_arm_length}" euler="0 0 0">
+                                            <geom name="left hand" type="capsule" fromto="0 0 0 0 0 -{self.hand_length}" size="{self.hand_width}" contype="4" conaffinity="4" mass="{self.hand_mass}"/>
+                                            <site name="left hand site" pos="0 0 0"/>
+                                        </body>
+                                    </body>
+                                </body>
+                                <body name="right upper arm" pos="0 {-self.torso_width/2} {self.torso_length}" euler="0 -15 0">
+                                    <geom name="right upper arm" type="capsule" fromto="0 0 0 0 0 -{self.upper_arm_length}" size="{self.upper_arm_width}" contype="4" conaffinity="4" mass="{self.upper_arm_mass}"/>
+                                    <joint name="right upper arm joint" type="ball" pos="0 0 0" limited="false"/>
+                                    <body name="right lower arm" pos="0 0 -{self.upper_arm_length}" euler="0 0 0">
+                                        <geom name="right lower arm" type="capsule" fromto="0 0 0 0 0 -{self.lower_arm_length}" size="{self.lower_arm_width}" contype="4" conaffinity="4" mass="{self.lower_arm_mass}"/>
+                                        <joint name="right lower arm hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
+                                        <body name="right hand" pos="0 0 -{self.lower_arm_length}" euler="0 0 0">
+                                            <geom name="right hand" type="capsule" fromto="0 0 0 0 0 -{self.hand_length}" size="{self.hand_width}" contype="4" conaffinity="4" mass="{self.hand_mass}"/>
+                                            <site name="right hand site" pos="0 0 0"/>
+                                        </body>
+                                    </body>
+                                </body>
+                            </body>
                         </body>
-                    </body>
                     <geom name="down tube" type="capsule" fromto="{self.bottom_bracket[0]} {self.bottom_bracket[1]} {self.bottom_bracket[2]}  {self.head_tube[0]} {self.head_tube[1]} {self.head_tube[2]}" size="0.016"/>
                     <geom name="top tube" type="capsule" fromto="{self.head_tube[0]} {self.head_tube[1]} {self.head_tube[2]}  {self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}" size="0.016"/>
                     <geom name="chain stay left" type="capsule" fromto="{self.bottom_bracket[0]-0.02} {-self.wheel_clearance} {self.bottom_bracket[2]}  {self.rear_hub[0]} {self.rear_hub[1]-self.wheel_clearance} {self.rear_hub[2]}" size="0.016"/>
@@ -107,6 +150,8 @@ class Bicycle:
                     <joint name="steer" type="hinge" axis="0 0 1" pos="0 0 0" range="-35 35"/>
                     <geom name="head tube" type="capsule" fromto="0 0 {self.fork_length} 0 0 {self.fork_length + self.handlebar_height}" size="0.016"/>
                     <geom name="handlebar" type="capsule" fromto="0 {-self.handlebar_width/2} {self.fork_length + self.handlebar_height} 0 {self.handlebar_width/2} {self.fork_length + self.handlebar_height}" size="0.016"/>
+                    <site name="left handlebar site" pos="0 {self.handlebar_width/2} {self.fork_length + self.handlebar_height}"/>
+                    <site name="right handlebar site" pos="0 {-self.handlebar_width/2} {self.fork_length + self.handlebar_height}"/>
                     <geom name="fork left" type="capsule" fromto="0 {-self.wheel_clearance} 0 0 {-self.wheel_clearance} {self.fork_length}" size="0.016"/>
                     <geom name="fork right" type="capsule" fromto="0 {self.wheel_clearance} 0 0 {self.wheel_clearance} {self.fork_length}" size="0.016"/>
                     <body name="front wheel" pos="0 0 0" euler="90 0 0">

@@ -11,13 +11,14 @@ def controller(model, data):
 
 def steering_angle_controller(model, data):
     # Extract the lean/roll angle from data.qpos and apply it to data.ctrl[1] (steering joint)
-    Kp1 = 50
+    Kp1 = 40
     Kp2 = 40
 
     quat = data.qpos[3:7]
     euler = R.from_quat([quat[1], quat[2], quat[3], quat[0]]).as_euler('xyz')
     roll_angle = euler[0]
     data.ctrl[1] = -roll_angle * Kp1 - Kp2 * (data.qpos[8])
+    
     pass
 
 def velocity_controller(model, data):
@@ -35,12 +36,11 @@ def velocity_controller(model, data):
     vel_body = rot.inv().apply(vel_world)
     current_velocity = vel_body[0]  # forward (body X) velocity
     error =  target_velocity - current_velocity
-    Kp = 20
+    Kp = 50
     data.ctrl[0] = Kp * error
 
 bicycle_world = World()
-world_xml = bicycle_world.create_world_model()
-model = mujoco.MjModel.from_xml_string(world_xml)
+model = mujoco.MjModel.from_xml_string(bicycle_world.create_world_model())
 data = mujoco.MjData(model)
 mujoco.set_mjcb_control(controller)
 
@@ -57,11 +57,11 @@ def update_camera(viewer, data):
     cam.lookat[:] = data.qpos[0:3]
 
 i = 0
-data.qvel[0] = 0
+data.qvel[0] = 2
 next_display_time = time.perf_counter()
 next_physics_time = time.perf_counter()
 
-push_impulse = 20 # Ns
+push_impulse = 10 # Ns
 force = push_impulse / physics_dt
 while True:
     i += 1
