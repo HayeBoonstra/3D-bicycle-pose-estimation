@@ -1,4 +1,9 @@
+class Humanoid:
+    def __init__(self):
+        pass
 
+    def create_humanoid_model(self):
+        humanoid_xml = f"""
          <mujoco model="Humanoid">
         <asset>
             <texture name="body" type="cube" builtin="flat" mark="cross" width="128" height="128" rgb1="0.8 0.6 0.4" rgb2="0.8 0.6 0.4" markrgb="1 1 1"/>
@@ -190,4 +195,15 @@
     <motor name="elbow_left"      gear="40"  joint="elbow_left"/>
   </actuator>
   </mujoco>
-        
+        """
+        return humanoid_xml
+
+    def save_humanoid_model(self, filename):
+        with open(filename, "w") as f:
+            f.write(self.create_humanoid_model())
+        pass
+
+if __name__ == "__main__":
+    humanoid = Humanoid()
+    humanoid.create_humanoid_model()
+    humanoid.save_humanoid_model("humanoid.xml")
