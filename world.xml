@@ -2,7 +2,7 @@
   <compiler angle="degree" coordinate="local"/>
   <option timestep="0.005" gravity="0 0 -9.81" noslip_iterations="15"/>
   <include file="bicycle.xml"/>
-  <!-- <include file="humanoid.xml"/> -->
+  <include file="humanoid.xml"/>
 
   <equality>
     <weld site1="pelvis_site" site2="seat_site"/>

@@ -36,8 +36,8 @@
                     <joint name="steer" type="hinge" axis="0 0 1" pos="0 0 0" range="-35 35"/>
                     <geom name="head tube" type="capsule" fromto="0 0 0.5694018992255457 0 0 0.6694018992255457" size="0.016"/>
                     <geom name="handlebar" type="capsule" fromto="0 -0.15 0.6694018992255457 0 0.15 0.6694018992255457" size="0.016"/>
-                    <site name="left_handlebar_site" pos="0 -0.15 0.6694018992255457"/>
-                    <site name="right_handlebar_site" pos="0 0.15 0.6694018992255457"/>
+                    <site name="left_handlebar_site" pos="0 0.15 0.6694018992255457"/>
+                    <site name="right_handlebar_site" pos="0 -0.15 0.6694018992255457"/>
                     <geom name="fork left" type="capsule" fromto="0 -0.02 0 0 -0.02 0.5694018992255457" size="0.016"/>
                     <geom name="fork right" type="capsule" fromto="0 0.02 0 0 0.02 0.5694018992255457" size="0.016"/>
                     <body name="front wheel" pos="0 0 0" euler="90 0 0">
@@ -50,12 +50,12 @@
                     <joint name="pedals" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                     <geom name="left_crank" type="capsule" fromto="0 -0.06 0 0 -0.06 -0.175" size="0.016"/>
                     <geom name="right_crank" type="capsule" fromto="0 0.06 0 0 0.06 0.175" size="0.016"/>
-                    <body name="left_pedal" pos="0 -0.14400000000000002 -0.175" euler="180 0 0">
+                    <body name="left_pedal" pos="0 0.14400000000000002 0.175" euler="180 0 0">
                         <joint name="left_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="left_pedal" type="box" size="0.04 0.06 0.01"/>
                         <site name="left_pedal_site" pos="0 0 0"/>
                     </body>
-                    <body name="right_pedal" pos="0 0.14400000000000002 0.175">
+                    <body name="right_pedal" pos="0 -0.14400000000000002 -0.175">
                         <joint name="right_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="right_pedal" type="box" size="0.04 0.06 0.01"/>
                         <site name="right_pedal_site" pos="0 0 0"/>
@@ -66,7 +66,7 @@
         </worldbody>
             
         <equality>
-            <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 1.7 0 0 0"/>
+            <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 1.4 0 0 0"/>
         </equality>
         
             

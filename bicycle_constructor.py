@@ -105,8 +105,8 @@ class Bicycle:
                     <joint name="steer" type="hinge" axis="0 0 1" pos="0 0 0" range="-35 35"/>
                     <geom name="head tube" type="capsule" fromto="0 0 {self.fork_length} 0 0 {self.fork_length + self.handlebar_height}" size="0.016"/>
                     <geom name="handlebar" type="capsule" fromto="0 {-self.handlebar_width/2} {self.fork_length + self.handlebar_height} 0 {self.handlebar_width/2} {self.fork_length + self.handlebar_height}" size="0.016"/>
-                    <site name="left_handlebar_site" pos="0 {-self.handlebar_width/2} {self.fork_length + self.handlebar_height}"/>
-                    <site name="right_handlebar_site" pos="0 {self.handlebar_width/2} {self.fork_length + self.handlebar_height}"/>
+                    <site name="left_handlebar_site" pos="0 {self.handlebar_width/2} {self.fork_length + self.handlebar_height}"/>
+                    <site name="right_handlebar_site" pos="0 {-self.handlebar_width/2} {self.fork_length + self.handlebar_height}"/>
                     <geom name="fork left" type="capsule" fromto="0 {-self.wheel_clearance} 0 0 {-self.wheel_clearance} {self.fork_length}" size="0.016"/>
                     <geom name="fork right" type="capsule" fromto="0 {self.wheel_clearance} 0 0 {self.wheel_clearance} {self.fork_length}" size="0.016"/>
                     <body name="front wheel" pos="0 0 0" euler="90 0 0">
@@ -117,14 +117,14 @@ class Bicycle:
                 </body>
                 <body name="pedals" pos="0 0 0">
                     <joint name="pedals" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
-                    <geom name="left_crank" type="capsule" fromto="0 -{self.crank_width} 0 0 -{self.crank_width} -{self.crank_length}" size="0.016"/>
+                    <geom name="left_crank" type="capsule" fromto="0 -{self.crank_width} 0 0 -{self.crank_width} {-self.crank_length}" size="0.016"/>
                     <geom name="right_crank" type="capsule" fromto="0 {self.crank_width} 0 0 {self.crank_width} {self.crank_length}" size="0.016"/>
-                    <body name="left_pedal" pos="0 {-self.crank_width - self.pedal_width/2 - 4*0.016} {-self.crank_length}" euler="180 0 0">
+                    <body name="left_pedal" pos="0 {self.crank_width + self.pedal_width/2 + 4*0.016} {self.crank_length}" euler="180 0 0">
                         <joint name="left_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="left_pedal" type="box" size="{self.pedal_width} {self.pedal_length} {0.01}"/>
                         <site name="left_pedal_site" pos="0 0 0"/>
                     </body>
-                    <body name="right_pedal" pos="0 {self.crank_width + self.pedal_width/2 + 4*0.016} {self.crank_length}">
+                    <body name="right_pedal" pos="0 {-self.crank_width - self.pedal_width/2 - 4*0.016} {-self.crank_length}">
                         <joint name="right_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="right_pedal" type="box" size="{self.pedal_width} {self.pedal_length} {0.01}"/>
                         <site name="right_pedal_site" pos="0 0 0"/>
