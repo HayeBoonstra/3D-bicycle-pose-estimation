@@ -118,7 +118,8 @@ def steering_angle_controller(model, data):
     pass
 
 def velocity_controller(model, data):
-    target_velocity = 3
+    target_velocity_kmh = 15
+    target_velocity = target_velocity_kmh / 3.6
     # Compute the local forward (bicycle body X) velocity
     # Get the orientation quaternion of the freejoint (qpos[3:7])
     quat = data.qpos[3:7]
@@ -131,7 +132,7 @@ def velocity_controller(model, data):
     vel_body = rot.inv().apply(vel_world)
     current_velocity = vel_body[0]  # forward (body X) velocity
     error =  target_velocity - current_velocity
-    Kp = 100
+    Kp = 20
     data.ctrl[0] = Kp * error
 
 # Regenerate bicycle and humanoid XML from constructors (includes sites), then load world
@@ -160,7 +161,7 @@ data.qvel[0] = 0
 next_display_time = time.perf_counter()
 next_physics_time = time.perf_counter()
 
-push_impulse = 100 # Ns
+push_impulse = 20 # Ns
 force = push_impulse / physics_dt
 while True:
     i += 1
