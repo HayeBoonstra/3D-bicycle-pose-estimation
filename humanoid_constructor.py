@@ -94,6 +94,7 @@ class Humanoid:
         <body name="pelvis" pos="0 0 -.165">
           <joint name="abdomen_x" pos="0 0 .1" axis="1 0 0" range="-35 35" class="joint_big"/>
           <geom name="butt" fromto="-.02 -.07 0 -.02 .07 0" size=".09"/>
+          <site name="pelvis_site" pos="0 0 -0.05"/>
           <body name="thigh_right" pos="0 -.1 -.04">
             <joint name="hip_x_right" axis="1 0 0" class="hip_x"/>
             <joint name="hip_z_right" axis="0 0 1" class="hip_z"/>
@@ -107,6 +108,7 @@ class Humanoid:
                 <joint name="ankle_x_right" class="ankle_x" axis="1 0 .5"/>
                 <geom name="foot1_right" class="foot1"/>
                 <geom name="foot2_right" class="foot2"/>
+                <site name="right_foot_site" pos="0.035 0 0"/>
               </body>
             </body>
           </body>
@@ -123,6 +125,7 @@ class Humanoid:
                 <joint name="ankle_x_left" class="ankle_x" axis="-1 0 -.5"/>
                 <geom name="foot1_left" class="foot1"/>
                 <geom name="foot2_left" class="foot2"/>
+                <site name="left_foot_site" pos="0.035 0 0"/>
               </body>
             </body>
           </body>
@@ -137,6 +140,7 @@ class Humanoid:
           <geom name="lower_arm_right" fromto=".01 .01 .01 .17 .17 .17" class="arm_lower"/>
           <body name="hand_right" pos=".18 .18 .18">
             <geom name="hand_right" zaxis="1 1 1" class="hand"/>
+            <site name="right_hand_site" pos="0 0 0"/>
           </body>
         </body>
       </body>
@@ -149,6 +153,7 @@ class Humanoid:
           <geom name="lower_arm_left" fromto=".01 -.01 .01 .17 -.17 .17" class="arm_lower"/>
           <body name="hand_left" pos=".18 -.18 .18">
             <geom name="hand_left" zaxis="1 -1 1" class="hand"/>
+            <site name="left_hand_site" pos="0 0 0"/>
           </body>
         </body>
       </body>

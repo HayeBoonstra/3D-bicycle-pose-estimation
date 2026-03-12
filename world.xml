@@ -4,6 +4,14 @@
   <include file="bicycle.xml"/>
   <include file="humanoid.xml"/>
 
+  <equality>
+    <weld site1="pelvis_site" site2="seat_site"/>
+    <weld site1="left_foot_site" site2="left_pedal_site"/>
+    <weld site1="right_foot_site" site2="right_pedal_site"/>
+    <weld site1="left_hand_site" site2="left_handlebar_site"/>
+    <weld site1="right_hand_site" site2="right_handlebar_site"/>
+  </equality>
+
   <statistic center="0 0 0.55" extent="1.1"/>
 
   <visual>

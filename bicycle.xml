@@ -1,7 +1,5 @@
 
         <mujoco model="bicycle">
-            <compiler angle="degree" coordinate="local"/>
-            <option timestep="0.005" gravity="0 0 -9.81" noslip_iterations="15"/>
             
         <asset>
             <mesh name="wheel_torus" builtin="supertorus" params="64 0.04 1 1" scale="0.35 0.35 0.35"/>
@@ -20,6 +18,7 @@
                     <geom name="seat post" type="capsule" fromto="-0.1423504748063864 0.0 0.5312592044589877  -0.16823237931663848 0.0 0.6278517870878945" size="0.016"/>
                     <body name="seat" pos="-0.16823237931663848 0.0 0.6278517870878945">
                         <geom name="seat" type="box" size="0.1 0.04 0.01"/>
+                        <site name="seat_site" pos="0 0 0.01"/>
                     </body>
                     <geom name="down tube" type="capsule" fromto="0.0 0.0 0.0  0.425253080816971 0.0 0.5850627629637268" size="0.016"/>
                     <geom name="top tube" type="capsule" fromto="0.425253080816971 0.0 0.5850627629637268  -0.1423504748063864 0.0 0.5312592044589877" size="0.016"/>
@@ -37,6 +36,8 @@
                     <joint name="steer" type="hinge" axis="0 0 1" pos="0 0 0" range="-35 35"/>
                     <geom name="head tube" type="capsule" fromto="0 0 0.5694018992255457 0 0 0.6694018992255457" size="0.016"/>
                     <geom name="handlebar" type="capsule" fromto="0 -0.15 0.6694018992255457 0 0.15 0.6694018992255457" size="0.016"/>
+                    <site name="left_handlebar_site" pos="0 -0.15 0.6694018992255457"/>
+                    <site name="right_handlebar_site" pos="0 0.15 0.6694018992255457"/>
                     <geom name="fork left" type="capsule" fromto="0 -0.02 0 0 -0.02 0.5694018992255457" size="0.016"/>
                     <geom name="fork right" type="capsule" fromto="0 0.02 0 0 0.02 0.5694018992255457" size="0.016"/>
                     <body name="front wheel" pos="0 0 0" euler="90 0 0">
@@ -52,10 +53,12 @@
                     <body name="left_pedal" pos="0 -0.14400000000000002 -0.175" euler="180 0 0">
                         <joint name="left_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="left_pedal" type="box" size="0.04 0.06 0.01"/>
+                        <site name="left_pedal_site" pos="0 0 0"/>
                     </body>
                     <body name="right_pedal" pos="0 0.14400000000000002 0.175">
                         <joint name="right_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="right_pedal" type="box" size="0.04 0.06 0.01"/>
+                        <site name="right_pedal_site" pos="0 0 0"/>
                     </body>
                 </body>
 
