@@ -18,6 +18,9 @@
                     <geom name="seat post" type="capsule" fromto="-0.1423504748063864 0.0 0.5312592044589877  -0.16823237931663848 0.0 0.6278517870878945" size="0.016"/>
                     <body name="seat" pos="-0.16823237931663848 0.0 0.6278517870878945">
                         <geom name="seat" type="box" size="0.1 0.04 0.01"/>
+                        <body name="torso" pos="0 0 0.01">
+                            <geom name="torso" type="capsule" fromto="0 0 0 0 0 0.3" size="0.1"  euler="0 15 0"/>
+                        </body>
                     </body>
                     <geom name="down tube" type="capsule" fromto="0.0 0.0 0.0  0.425253080816971 0.0 0.5850627629637268" size="0.016"/>
                     <geom name="top tube" type="capsule" fromto="0.425253080816971 0.0 0.5850627629637268  -0.1423504748063864 0.0 0.5312592044589877" size="0.016"/>
@@ -61,7 +64,7 @@
         </worldbody>
             
         <equality>
-            <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 1.7 0 0 0"/>
+            <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 1.4 0 0 0"/>
         </equality>
         
             

@@ -1,7 +1,23 @@
-<mujoco model="bicycle world">
+import mujoco
+import mujoco.viewer
+import time
+import numpy as np
+from scipy.spatial.transform import Rotation as R
+from bicycle_constructor import Bicycle
+
+class World:
+    def __init__(self):
+        self.bicycle = Bicycle()
+        self.bicycle.create_bicycle_variables()
+        self.bicycle_model = self.bicycle.create_bicycle_model()
+    
+    def create_world_model(self):
+        world_model = f"""
+        <mujoco model="bicycle world">
   <compiler angle="degree" coordinate="local"/>
   <option timestep="0.005" gravity="0 0 -9.81" noslip_iterations="15"/>
-  <include file="bicycle.xml"/>
+  
+  {self.bicycle_model}
 
   <statistic center="0 0 0.55" extent="1.1"/>
 
@@ -22,4 +38,5 @@
     <light pos="0 0 3" dir="0 0 -1" directional="true" diffuse="1.5 1.5 1.5"/>
     <geom name="floor" size="0 0 .125" type="plane" material="groundplane" contype="3" conaffinity="15" condim="3"/>
   </worldbody>
-</mujoco>
+</mujoco>"""
+        return world_model

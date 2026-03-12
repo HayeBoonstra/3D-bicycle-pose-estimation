@@ -3,6 +3,7 @@ import mujoco.viewer
 import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+from world_constructor import World
 
 def controller(model, data):
     steering_angle_controller(model, data)
@@ -37,7 +38,9 @@ def velocity_controller(model, data):
     Kp = 20
     data.ctrl[0] = Kp * error
 
-model = mujoco.MjModel.from_xml_path("world.xml")
+bicycle_world = World()
+world_xml = bicycle_world.create_world_model()
+model = mujoco.MjModel.from_xml_string(world_xml)
 data = mujoco.MjData(model)
 mujoco.set_mjcb_control(controller)
 

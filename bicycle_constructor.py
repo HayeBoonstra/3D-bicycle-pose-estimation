@@ -87,6 +87,9 @@ class Bicycle:
                     <geom name="seat post" type="capsule" fromto="{self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}  {self.seat_tube_post[0]} {self.seat_tube_post[1]} {self.seat_tube_post[2]}" size="0.016"/>
                     <body name="seat" pos="{self.seat_tube_post[0]} {self.seat_tube_post[1]} {self.seat_tube_post[2]}">
                         <geom name="seat" type="box" size="{self.seat_length} {self.seat_width} {self.seat_thickness}"/>
+                        <body name="torso" pos="0 0 0.01">
+                            <geom name="torso" type="capsule" fromto="0 0 0 0 0 0.3" size="0.1"  euler="0 15 0"/>
+                        </body>
                     </body>
                     <geom name="down tube" type="capsule" fromto="{self.bottom_bracket[0]} {self.bottom_bracket[1]} {self.bottom_bracket[2]}  {self.head_tube[0]} {self.head_tube[1]} {self.head_tube[2]}" size="0.016"/>
                     <geom name="top tube" type="capsule" fromto="{self.head_tube[0]} {self.head_tube[1]} {self.head_tube[2]}  {self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}" size="0.016"/>
@@ -130,7 +133,6 @@ class Bicycle:
         </worldbody>"""
 
         xml_file = f"""
-        <mujoco model="bicycle">
             {wheel_xml}
             <default>
                 <joint limited="true" damping="0.01"/>
@@ -141,7 +143,6 @@ class Bicycle:
             {actuator_xml}
 
             <size njmax="100" nconmax="50"/>
-        </mujoco>
         """
         return xml_file
     
