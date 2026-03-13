@@ -4,6 +4,7 @@ import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 from world_constructor import World
+from IK_solver import IKSolver
 
 def controller(model, data):
     steering_angle_controller(model, data)
@@ -11,14 +12,17 @@ def controller(model, data):
 
 def steering_angle_controller(model, data):
     # Extract the lean/roll angle from data.qpos and apply it to data.ctrl[1] (steering joint)
-    Kp1 = 40
+    Kp1 = 45
     Kp2 = 40
 
     quat = data.qpos[3:7]
     euler = R.from_quat([quat[1], quat[2], quat[3], quat[0]]).as_euler('xyz')
     roll_angle = euler[0]
-    data.ctrl[1] = -roll_angle * Kp1 - Kp2 * (data.qpos[8])
-    
+    # Add a derivative (damping) term using roll angular velocity (assumed to be in data.qvel[7])
+    Kd = 10  # Derivative (damping) gain, adjust as needed
+    roll_velocity = data.qvel[7]
+    steering_angle = data.qpos[8]
+    data.ctrl[1] = -roll_angle * Kp1 - Kp2 * steering_angle - Kd * roll_velocity
     pass
 
 def velocity_controller(model, data):
@@ -44,6 +48,11 @@ model = mujoco.MjModel.from_xml_string(bicycle_world.create_world_model())
 data = mujoco.MjData(model)
 mujoco.set_mjcb_control(controller)
 
+## IK solve the hands towards the handlebar sites as initial position
+ik_solver = IKSolver(model, data)
+ik_solver.solve_hands()
+    
+
 # Time control: physics at 200Hz, display at 60Hz
 PHYSICS_HZ = 200
 DISPLAY_HZ = 60
@@ -57,11 +66,11 @@ def update_camera(viewer, data):
     cam.lookat[:] = data.qpos[0:3]
 
 i = 0
-data.qvel[0] = 2
+data.qvel[0] = 3
 next_display_time = time.perf_counter()
 next_physics_time = time.perf_counter()
 
-push_impulse = 10 # Ns
+push_impulse = 0 # Ns
 force = push_impulse / physics_dt
 while True:
     i += 1

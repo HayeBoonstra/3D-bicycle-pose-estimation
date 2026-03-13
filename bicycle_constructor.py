@@ -36,12 +36,12 @@ class Bicycle:
         self.torso_length = 0.48
         self.torso_width = 0.1
         self.torso_lean = 15 # degrees
-        self.torso_mass = 0.001
+        self.torso_mass = 10
 
         self.upper_arm_length = 0.4
         self.upper_arm_width = 0.016
         self.upper_arm_mass = 0.001
-        self.lower_arm_length = 0.4
+        self.lower_arm_length = 0.3
         self.lower_arm_width = 0.016
         self.lower_arm_mass = 0.001
         self.hand_length = 0.016
@@ -92,8 +92,8 @@ class Bicycle:
         equality_xml = f"""
         <equality>
             <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 {self.gear_ratio} 0 0 0"/>
-            <weld site1="left hand site" site2="left handlebar site" solref="0.001 1.0"/>
-            <weld site1="right hand site" site2="right handlebar site" solref="0.001 1.0"/>
+            <weld site1="left hand site" site2="left handlebar site"/>
+            <weld site1="right hand site" site2="right handlebar site"/>
         </equality>
         """
 
@@ -110,10 +110,11 @@ class Bicycle:
                             <geom name="torso" type="capsule" fromto="0 0 0 0 0 {self.torso_length}" size="{self.torso_width}" contype="4" conaffinity="4" mass="{self.torso_mass}"/>
                                 <body name="left upper arm" pos="0 {self.torso_width/2} {self.torso_length}" euler="0 -15 0">
                                     <geom name="left upper arm" type="capsule" fromto="0 0 0 0 0 -{self.upper_arm_length}" size="{self.upper_arm_width}" contype="4" conaffinity="4" mass="{self.upper_arm_mass}"/>
-                                    <joint name="left upper arm joint" type="ball" pos="0 0 0" limited="false"/>
+                                    <joint name="left upper arm flexion" type="hinge" axis="0 1 0" pos="0 0 0" limited="true" range="-120 0"/>
+                                    <joint name="left upper arm abduction" type="hinge" axis="1 0 0" pos="0 0 0" limited="true" range="0 60"/>
                                     <body name="left lower arm" pos="0 0 -{self.upper_arm_length}" euler="0 0 0">
                                         <geom name="left lower arm" type="capsule" fromto="0 0 0 0 0 -{self.lower_arm_length}" size="{self.lower_arm_width}" contype="4" conaffinity="4" mass="{self.lower_arm_mass}"/>
-                                        <joint name="left lower arm hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
+                                        <joint name="left lower arm hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="true" range="-120 0"/>
                                         <body name="left hand" pos="0 0 -{self.lower_arm_length}" euler="0 0 0">
                                             <geom name="left hand" type="capsule" fromto="0 0 0 0 0 -{self.hand_length}" size="{self.hand_width}" contype="4" conaffinity="4" mass="{self.hand_mass}"/>
                                             <site name="left hand site" pos="0 0 0"/>
@@ -122,10 +123,11 @@ class Bicycle:
                                 </body>
                                 <body name="right upper arm" pos="0 {-self.torso_width/2} {self.torso_length}" euler="0 -15 0">
                                     <geom name="right upper arm" type="capsule" fromto="0 0 0 0 0 -{self.upper_arm_length}" size="{self.upper_arm_width}" contype="4" conaffinity="4" mass="{self.upper_arm_mass}"/>
-                                    <joint name="right upper arm joint" type="ball" pos="0 0 0" limited="false"/>
+                                    <joint name="right upper arm flexion" type="hinge" axis="0 1 0" pos="0 0 0" limited="true" range="-120 0"/>
+                                    <joint name="right upper arm abduction" type="hinge" axis="1 0 0" pos="0 0 0" limited="true" range="0 60"/>
                                     <body name="right lower arm" pos="0 0 -{self.upper_arm_length}" euler="0 0 0">
                                         <geom name="right lower arm" type="capsule" fromto="0 0 0 0 0 -{self.lower_arm_length}" size="{self.lower_arm_width}" contype="4" conaffinity="4" mass="{self.lower_arm_mass}"/>
-                                        <joint name="right lower arm hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
+                                        <joint name="right lower arm hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="true" range="-120 0"/>
                                         <body name="right hand" pos="0 0 -{self.lower_arm_length}" euler="0 0 0">
                                             <geom name="right hand" type="capsule" fromto="0 0 0 0 0 -{self.hand_length}" size="{self.hand_width}" contype="4" conaffinity="4" mass="{self.hand_mass}"/>
                                             <site name="right hand site" pos="0 0 0"/>
