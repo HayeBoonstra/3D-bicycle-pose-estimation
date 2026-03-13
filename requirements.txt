@@ -2,3 +2,5 @@ numpy
 mujoco
 matplotlib
 scipy
+glfw
+pyqt5
