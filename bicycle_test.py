@@ -91,12 +91,6 @@ def steering_angle_controller(model, data, angle_array, i, plot_data):
 
         plot_data["global_position"].append(np.array(data.qpos[0:3]))
 
-        
-
-    
-
-
-
 def velocity_controller(model, data):
     target_velocity_kmh = 15
     target_velocity = target_velocity_kmh / 3.6
@@ -289,44 +283,52 @@ def save_transform_data_csv(transform_data, csv_path):
                 row[k] = transform_data[k][i]
             w.writerow(row)
     
+viewer_mode = False
+if viewer_mode:
+    with mujoco.viewer.launch_passive(model, data, key_callback=on_key) as viewer:
+        while viewer.is_running() and not space_pressed and i < len(angle_array):
+            mujoco.mj_step(model, data)
+            # Sync viewer and camera at 60Hz only
+            now = time.perf_counter()
+            if now >= next_display_time:
+                viewer.sync()
+                update_camera(viewer, data)
+                next_display_time += display_dt
+                if next_display_time < now:
+                    next_display_time = now + display_dt
+
+            # Sleep only the remaining time until next physics tick (accounts for computation time)
+            now = time.perf_counter()
+            sleep_time = next_physics_time - now
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            next_physics_time += physics_dt
+            if next_physics_time < time.perf_counter():
+                next_physics_time = time.perf_counter()
+            steering_angle_controller(model, data, angle_array, i, plot_data)
+            save_transform_data(model, data, i, transform_data)
+            i += 1
     
-
-with mujoco.viewer.launch_passive(model, data, key_callback=on_key) as viewer:
-    while viewer.is_running() and not space_pressed:
-        i += 1
+else:
+    while i < len(angle_array):
         mujoco.mj_step(model, data)
-        # Sync viewer and camera at 60Hz only
-        now = time.perf_counter()
-        if now >= next_display_time:
-            viewer.sync()
-            update_camera(viewer, data)
-            next_display_time += display_dt
-            if next_display_time < now:
-                next_display_time = now + display_dt
-
-        # Sleep only the remaining time until next physics tick (accounts for computation time)
-        now = time.perf_counter()
-        sleep_time = next_physics_time - now
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-        next_physics_time += physics_dt
-        if next_physics_time < time.perf_counter():
-            next_physics_time = time.perf_counter()
-        if i >= len(angle_array):
-            i = 0
         steering_angle_controller(model, data, angle_array, i, plot_data)
         save_transform_data(model, data, i, transform_data)
+        i += 1
+
 
 transform_data = resize_transform_data(transform_data, DISPLAY_HZ)
 save_transform_data_csv(transform_data, f"transform_data_{DISPLAY_HZ}hz.csv")
-plt.subplot(2, 1, 1)
-plt.plot(plot_data["time"], plot_data["desired_yaw_angle"], label="Desired Yaw Angle")
-plt.plot(plot_data["time"], plot_data["actual_yaw_angle"], label="Actual Yaw Angle")
-plt.plot(plot_data["time"], plot_data["applied_force"], label="Applied Force")
-plt.legend()
-plt.subplot(2, 1, 2)
-global_positions = np.array(plot_data["global_position"])
-if global_positions.shape[0] > 0 and global_positions.shape[1] >= 2:
-    plt.plot(global_positions[:, 0], global_positions[:, 1], label="Global Position")
-plt.legend()
-plt.show() 
+plot_mode = False
+if plot_mode:
+    plt.subplot(2, 1, 1)
+    plt.plot(plot_data["time"], plot_data["desired_yaw_angle"], label="Desired Yaw Angle")
+    plt.plot(plot_data["time"], plot_data["actual_yaw_angle"], label="Actual Yaw Angle")
+    plt.plot(plot_data["time"], plot_data["applied_force"], label="Applied Force")
+    plt.legend()
+    plt.subplot(2, 1, 2)
+    global_positions = np.array(plot_data["global_position"])
+    if global_positions.shape[0] > 0 and global_positions.shape[1] >= 2:
+        plt.plot(global_positions[:, 0], global_positions[:, 1], label="Global Position")
+    plt.legend()
+    plt.show() 
