@@ -23,7 +23,6 @@ def controller(model, data):
     velocity_controller(model, data)
 
 def steering_angle_controller(model, data, angle_array, i, plot_data):
-    # Extract the lean/roll angle from data.qpos and apply it to data.ctrl[1] (steering joint)
     Kp1 = 40
     Kp2 = 40
 
@@ -37,14 +36,33 @@ def steering_angle_controller(model, data, angle_array, i, plot_data):
     # Shortest angular difference so control doesn't see ±360° jumps at wrap
     # if absolute value is used than the controller will explode at ±180°
     delta_turn = (desired_turn_rate - yaw_angle + 180) % 360 - 180
-    Kp_turn = 10
-    
+    Kp_turn = 1.5
+
+    Ki_turn = 0.2
+    try: 
+        integral_turn += delta_turn * physics_dt
+    except:
+        integral_turn = 0
+
+    Kd_turn = 1
+    try: 
+        delta_turn += Kd_turn * (delta_turn - delta_turn_prev)
+    except:
+        delta_turn_prev = delta_turn
+
+    delta_turn += Ki_turn * integral_turn
     # Define force in the local/bicycle frame (lateral-Y, no X/Z)
     force_local = np.array([0, Kp_turn * delta_turn, 0])
     # Convert the force to the world frame
     force_world = rot.apply(force_local)
-    # Apply the force to the freejoint (first 3 are force X/Y/Z)
-    data.qfrc_applied[0:3] = force_world
+    # Apply the force at the seat site via xfrc_applied (force at point = force at CoM + torque)
+    site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "seat_site")
+    body_id = model.site_bodyid[site_id]
+    site_pos = data.site_xpos[site_id]
+    body_com = data.xpos[body_id]
+    torque = np.cross(site_pos - body_com, force_world)
+    data.xfrc_applied[body_id][:3] = force_world
+    data.xfrc_applied[body_id][3:6] = torque
 
     quat = data.qpos[3:7]
     euler = R.from_quat([quat[1], quat[2], quat[3], quat[0]]).as_euler('xyz')
@@ -68,7 +86,7 @@ def steering_angle_controller(model, data, angle_array, i, plot_data):
         plot_data["time"].append(i * physics_dt)
         plot_data["desired_yaw_angle"].append(desired_turn_rate)
         plot_data["actual_yaw_angle"].append(yaw_unwrapped)
-        plot_data["applied_force"].append(force_world[1])
+        plot_data["applied_force"].append(np.linalg.norm(force_world))
 
         plot_data["global_position"].append(np.array(data.qpos[0:3]))
 
@@ -165,6 +183,7 @@ with mujoco.viewer.launch_passive(model, data, key_callback=on_key) as viewer:
         if i >= len(angle_array):
             i = 0
         steering_angle_controller(model, data, angle_array, i, plot_data)
+
 plt.subplot(2, 1, 1)
 plt.plot(plot_data["time"], plot_data["desired_yaw_angle"], label="Desired Yaw Angle")
 plt.plot(plot_data["time"], plot_data["actual_yaw_angle"], label="Actual Yaw Angle")
