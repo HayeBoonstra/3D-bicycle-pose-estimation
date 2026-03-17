@@ -16,6 +16,7 @@ import mujoco.viewer
 import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
+from scipy.spatial.transform import Slerp
 import glfw
 import matplotlib.pyplot as plt
 
@@ -114,6 +115,26 @@ def velocity_controller(model, data):
     Kp = 50
     data.ctrl[0] = Kp * error
 
+def extract_transform_data(model, data):
+    def _qpos(idx, default=np.nan):
+        return float(data.qpos[idx]) if idx < data.qpos.shape[0] else float(default)
+
+    tx = data.qpos[0]
+    ty = data.qpos[1]
+    tz = data.qpos[2]
+    quat = np.array([_qpos(3), _qpos(4), _qpos(5), _qpos(6)], dtype=float)  # MuJoCo freejoint: w, x, y, z
+    rw = quat[0]  # stored as w
+    rx = quat[1]  # stored as x
+    ry = quat[2]  # stored as y
+    rz = quat[3]  # stored as z
+    rear_wheel_angle = _qpos(8)
+    steer_angle = _qpos(9)
+    front_wheel_angle = _qpos(10)
+    crank_angle = _qpos(11)
+    left_pedal_angle = _qpos(12)
+    right_pedal_angle = _qpos(13)
+    return tx, ty, tz, rw, rx, ry, rz, rear_wheel_angle, steer_angle, front_wheel_angle, crank_angle, left_pedal_angle, right_pedal_angle
+
 model = mujoco.MjModel.from_xml_path("world.xml")
 data = mujoco.MjData(model)
 mujoco.set_mjcb_control(controller)
@@ -138,9 +159,9 @@ i = 0
 data.qvel[0] = 3
 angle_array = np.concatenate((
     np.zeros(200),
-    np.linspace(0, 90, 600),
-    np.repeat(90, 400),
-    np.linspace(90, 0, 400),
+    np.linspace(0,30, 100),
+    np.linspace(30, -30, 200),
+    np.linspace(-30, 0, 100),
 ))
 
 # circular_path = np.linspace(0, 2 * np.pi, 2000)
@@ -158,6 +179,117 @@ plot_data = {
     "applied_force": [],
     "global_position": [],
 }
+
+transform_data = {
+    "time": [],
+    "tx": [],
+    "ty": [],
+    "tz": [],
+    "rw": [],
+    "rx": [],
+    "ry": [],
+    "rz": [],
+    "rear_wheel_angle": [],
+    "steer_angle": [],
+    "front_wheel_angle": [],
+    "crank_angle": [],
+    "left_pedal_angle": [],
+    "right_pedal_angle": [],
+}
+
+def save_transform_data(model, data, i, transform_data):
+    tx, ty, tz, rw, rx, ry, rz, rear_wheel_angle, steer_angle, front_wheel_angle, crank_angle, left_pedal_angle, right_pedal_angle = extract_transform_data(model, data)
+    # Use a monotonically increasing capture time (i can wrap for controllers).
+    transform_data["time"].append(len(transform_data["time"]) * physics_dt)
+    transform_data["tx"].append(tx)
+    transform_data["ty"].append(ty)
+    transform_data["tz"].append(tz)
+    transform_data["rw"].append(rw)
+    transform_data["rx"].append(rx)
+    transform_data["ry"].append(ry)
+    transform_data["rz"].append(rz)
+    transform_data["rear_wheel_angle"].append(rear_wheel_angle)
+    transform_data["steer_angle"].append(steer_angle)
+    transform_data["front_wheel_angle"].append(front_wheel_angle)
+    transform_data["crank_angle"].append(crank_angle)
+    transform_data["left_pedal_angle"].append(left_pedal_angle)
+    transform_data["right_pedal_angle"].append(right_pedal_angle)
+
+def resize_transform_data(transform_data, target_frame_rate):
+    actual_frame_rate = 1/physics_dt
+    if actual_frame_rate == target_frame_rate:
+        print("Actual frame rate is equal to target frame rate")
+        return transform_data
+    
+    t_in = np.asarray(transform_data.get("time", []), dtype=float)
+    if t_in.size < 2:
+        return transform_data
+
+    duration = t_in[-1] - t_in[0]
+    if duration <= 0:
+        return transform_data
+
+    n_out = int(round(duration * float(target_frame_rate)))
+    n_out = max(2, n_out)
+    t_out = np.linspace(t_in[0], t_in[-1], n_out, dtype=float)
+
+    transform_data["time"] = t_out.tolist()
+
+    quat_keys = ("rx", "ry", "rz", "rw")  # already x, y, z, w (SciPy order) from extract
+    if all(k in transform_data for k in quat_keys) and all(len(transform_data[k]) == t_in.shape[0] for k in quat_keys):
+        q_xyzw = np.stack([np.asarray(transform_data[k], dtype=float) for k in quat_keys], axis=1)
+        q_xyzw = q_xyzw / np.linalg.norm(q_xyzw, axis=1, keepdims=True)
+        rots = R.from_quat(q_xyzw)
+        slerp = Slerp(t_in, rots)
+        q_out_xyzw = slerp(t_out).as_quat()  # x, y, z, w
+        transform_data["rx"] = q_out_xyzw[:, 0].tolist()
+        transform_data["ry"] = q_out_xyzw[:, 1].tolist()
+        transform_data["rz"] = q_out_xyzw[:, 2].tolist()
+        transform_data["rw"] = q_out_xyzw[:, 3].tolist()
+
+    for k, v in list(transform_data.items()):
+        if k == "time":
+            continue
+        if k in quat_keys:
+            continue
+        y_in = np.asarray(v, dtype=float)
+        if y_in.size == 0:
+            transform_data[k] = []
+            continue
+        if y_in.shape[0] != t_in.shape[0]:
+            raise ValueError(
+                f"transform_data['{k}'] length {y_in.shape[0]} does not match time length {t_in.shape[0]}"
+            )
+
+        y2 = y_in.reshape(y_in.shape[0], -1)
+        y2_out = np.empty((t_out.shape[0], y2.shape[1]), dtype=float)
+        for col in range(y2.shape[1]):
+            y2_out[:, col] = np.interp(t_out, t_in, y2[:, col])
+        y_out = y2_out.reshape((t_out.shape[0],) + y_in.shape[1:])
+        transform_data[k] = y_out.tolist()
+    return transform_data
+
+def save_transform_data_csv(transform_data, csv_path):
+    import csv
+
+    keys = [k for k in transform_data.keys() if k != "time"]
+    fieldnames = ["time"] + keys
+
+    n = len(transform_data.get("time", []))
+    for k in keys:
+        if len(transform_data.get(k, [])) != n:
+            raise ValueError(f"Column '{k}' length {len(transform_data.get(k, []))} does not match time length {n}")
+
+    with open(csv_path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for i in range(n):
+            row = {"time": transform_data["time"][i]}
+            for k in keys:
+                row[k] = transform_data[k][i]
+            w.writerow(row)
+    
+    
 
 with mujoco.viewer.launch_passive(model, data, key_callback=on_key) as viewer:
     while viewer.is_running() and not space_pressed:
@@ -183,7 +315,10 @@ with mujoco.viewer.launch_passive(model, data, key_callback=on_key) as viewer:
         if i >= len(angle_array):
             i = 0
         steering_angle_controller(model, data, angle_array, i, plot_data)
+        save_transform_data(model, data, i, transform_data)
 
+transform_data = resize_transform_data(transform_data, DISPLAY_HZ)
+save_transform_data_csv(transform_data, f"transform_data_{DISPLAY_HZ}hz.csv")
 plt.subplot(2, 1, 1)
 plt.plot(plot_data["time"], plot_data["desired_yaw_angle"], label="Desired Yaw Angle")
 plt.plot(plot_data["time"], plot_data["actual_yaw_angle"], label="Actual Yaw Angle")
