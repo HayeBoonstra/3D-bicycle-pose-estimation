@@ -19,6 +19,7 @@ from scipy.spatial.transform import Rotation as R
 from scipy.spatial.transform import Slerp
 import glfw
 import matplotlib.pyplot as plt
+import argparse
 
 def controller(model, data):
     velocity_controller(model, data)
@@ -130,6 +131,17 @@ def extract_transform_data(model, data):
     return tx, ty, tz, rw, rx, ry, rz, rear_wheel_angle, steer_angle, front_wheel_angle, crank_angle, left_pedal_angle, right_pedal_angle
 
 
+parser = argparse.ArgumentParser(description="Bicycle simulation launch options")
+parser.add_argument("--plotting", dest="plotting", action="store_true", help="Enable plotting")
+parser.set_defaults(plotting=False)
+parser.add_argument("--viewer", dest="viewer", action="store_true", help="Enable viewer")
+parser.set_defaults(viewer=False)
+args = parser.parse_args()
+launch_options = {
+    "plotting": args.plotting,
+    "viewer": args.viewer
+}
+
 world = World()
 model_xml = world.create_world()
 world.save_world("world.xml")  # save the world XML file
@@ -158,9 +170,10 @@ i = 0
 data.qvel[0] = 3
 angle_array = np.concatenate((
     np.zeros(100),
-    np.linspace(0,90, 200),
-    np.linspace(90, -90, 400),
-    np.linspace(-90, 0, 200),
+    np.linspace(0,90, 400),
+    np.linspace(90, -90, 800),
+    np.linspace(-90, 0, 400),
+    np.zeros(100)
 ))
 
 # circular_path = np.linspace(0, 2 * np.pi, 2000)
@@ -288,8 +301,7 @@ def save_transform_data_csv(transform_data, csv_path):
                 row[k] = transform_data[k][i]
             w.writerow(row)
     
-viewer_mode = True
-if viewer_mode:
+if launch_options["viewer"]:
     viewer = mujoco.viewer.launch_passive(model, data, key_callback=on_key)
     try:
         while viewer.is_running() and not space_pressed and i < len(angle_array):
@@ -330,8 +342,7 @@ else:
 
 transform_data = resize_transform_data(transform_data, DISPLAY_HZ)
 save_transform_data_csv(transform_data, f"transform_data_{DISPLAY_HZ}hz.csv")
-plot_mode = True
-if plot_mode:
+if launch_options["plotting"]:
     plt.subplot(2, 1, 1)
     plt.plot(plot_data["time"], plot_data["desired_yaw_angle"], label="Desired Yaw Angle")
     plt.plot(plot_data["time"], plot_data["actual_yaw_angle"], label="Actual Yaw Angle")
