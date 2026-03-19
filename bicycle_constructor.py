@@ -52,9 +52,7 @@ class Bicycle:
         self.seat_stay_attachment = self.bottom_bracket + self.seat_tube * seat_stay_attachment_ratio
 
         ## seat geometry
-        self.seat_tube_post = self.seat_tube + np.array([-np.sin(self.seat_tube_angle), 0.0, np.cos(self.seat_tube_angle)]) * self.seat_height
-
-        
+        self.seat_tube_post = self.seat_tube + np.array([-np.sin(self.seat_tube_angle), 0.0, np.cos(self.seat_tube_angle)]) * self.seat_height     
 
     def create_bicycle_model(self):
         ## create the mujoco XML file

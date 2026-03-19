@@ -1,4 +1,15 @@
+import mujoco
+from bicycle_constructor import Bicycle
 
+class World:
+    def __init__(self):
+        bicycle = Bicycle()
+        bicycle.create_bicycle_variables()
+        bicycle.create_bicycle_model()
+        bicycle.save_bicycle_model("bicycle.xml")
+    
+    def create_world(self):
+        world_xml = f"""
             <mujoco model="bicycle world">
             <compiler angle="degree" coordinate="local"/>
             <option timestep="0.005" gravity="0 0 -9.81" noslip_iterations="15"/>
@@ -23,4 +34,9 @@
                 <light pos="0 0 3" dir="0 0 -1" directional="true" diffuse="1.5 1.5 1.5"/>
                 <geom name="floor" size="0 0 .125" type="plane" material="groundplane" contype="3" conaffinity="15" condim="3"/>
             </worldbody>
-            </mujoco>
+            </mujoco>"""
+        return world_xml
+    
+    def save_world(self, filename):
+        with open(filename, "w") as f:
+            f.write(self.create_world())

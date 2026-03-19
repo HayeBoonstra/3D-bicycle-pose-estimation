@@ -1,5 +1,5 @@
 import os
-
+from world_contructor import World
 # Use Qt with Wayland when tkinter is missing (avoids xcb plugin load failure on Linux)
 try:
     import tkinter  # noqa: F401
@@ -129,7 +129,12 @@ def extract_transform_data(model, data):
     right_pedal_angle = _qpos(13)
     return tx, ty, tz, rw, rx, ry, rz, rear_wheel_angle, steer_angle, front_wheel_angle, crank_angle, left_pedal_angle, right_pedal_angle
 
-model = mujoco.MjModel.from_xml_path("world.xml")
+
+world = World()
+model_xml = world.create_world()
+world.save_world("world.xml")  # save the world XML file
+
+model = mujoco.MjModel.from_xml_string(model_xml)
 data = mujoco.MjData(model)
 mujoco.set_mjcb_control(controller)
 
@@ -152,10 +157,10 @@ def update_camera(viewer, data):
 i = 0
 data.qvel[0] = 3
 angle_array = np.concatenate((
-    np.zeros(200),
-    np.linspace(0,30, 100),
-    np.linspace(30, -30, 200),
-    np.linspace(-30, 0, 100),
+    np.zeros(100),
+    np.linspace(0,90, 200),
+    np.linspace(90, -90, 400),
+    np.linspace(-90, 0, 200),
 ))
 
 # circular_path = np.linspace(0, 2 * np.pi, 2000)
@@ -283,9 +288,10 @@ def save_transform_data_csv(transform_data, csv_path):
                 row[k] = transform_data[k][i]
             w.writerow(row)
     
-viewer_mode = False
+viewer_mode = True
 if viewer_mode:
-    with mujoco.viewer.launch_passive(model, data, key_callback=on_key) as viewer:
+    viewer = mujoco.viewer.launch_passive(model, data, key_callback=on_key)
+    try:
         while viewer.is_running() and not space_pressed and i < len(angle_array):
             mujoco.mj_step(model, data)
             # Sync viewer and camera at 60Hz only
@@ -308,6 +314,11 @@ if viewer_mode:
             steering_angle_controller(model, data, angle_array, i, plot_data)
             save_transform_data(model, data, i, transform_data)
             i += 1
+    except:
+        print("error in viewer mode")
+        traceback.print_exc()
+    finally:
+        viewer.close()
     
 else:
     while i < len(angle_array):
@@ -319,7 +330,7 @@ else:
 
 transform_data = resize_transform_data(transform_data, DISPLAY_HZ)
 save_transform_data_csv(transform_data, f"transform_data_{DISPLAY_HZ}hz.csv")
-plot_mode = False
+plot_mode = True
 if plot_mode:
     plt.subplot(2, 1, 1)
     plt.plot(plot_data["time"], plot_data["desired_yaw_angle"], label="Desired Yaw Angle")
