@@ -122,12 +122,12 @@ def extract_transform_data(model, data):
     rx = quat[1]  # stored as x
     ry = quat[2]  # stored as y
     rz = quat[3]  # stored as z
-    rear_wheel_angle = _qpos(8)
-    steer_angle = _qpos(9)
-    front_wheel_angle = _qpos(10)
-    crank_angle = _qpos(11)
-    left_pedal_angle = _qpos(12)
-    right_pedal_angle = _qpos(13)
+    rear_wheel_angle = _qpos(7)
+    steer_angle = _qpos(8)
+    front_wheel_angle = _qpos(9)
+    crank_angle = _qpos(10)
+    left_pedal_angle = _qpos(11)
+    right_pedal_angle = _qpos(12)
     return tx, ty, tz, rw, rx, ry, rz, rear_wheel_angle, steer_angle, front_wheel_angle, crank_angle, left_pedal_angle, right_pedal_angle
 
 
@@ -220,12 +220,15 @@ def save_transform_data(model, data, i, transform_data):
     transform_data["rx"].append(rx)
     transform_data["ry"].append(ry)
     transform_data["rz"].append(rz)
-    transform_data["rear_wheel_angle"].append(rear_wheel_angle)
-    transform_data["steer_angle"].append(steer_angle)
-    transform_data["front_wheel_angle"].append(front_wheel_angle)
-    transform_data["crank_angle"].append(crank_angle)
-    transform_data["left_pedal_angle"].append(left_pedal_angle)
-    transform_data["right_pedal_angle"].append(right_pedal_angle)
+    for key, rad in (
+        ("rear_wheel_angle", rear_wheel_angle),
+        ("steer_angle", steer_angle),
+        ("front_wheel_angle", front_wheel_angle),
+        ("crank_angle", crank_angle),
+        ("left_pedal_angle", left_pedal_angle),
+        ("right_pedal_angle", right_pedal_angle),
+    ):
+        transform_data[key].append(float(np.rad2deg(rad)))
 
 def resize_transform_data(transform_data, target_frame_rate):
     actual_frame_rate = 1/physics_dt
