@@ -38,6 +38,7 @@ ENV/
 *.swp
 *.swo
 *~
+.cursor/
 
 # Testing / coverage
 .tox/

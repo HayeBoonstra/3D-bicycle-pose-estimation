@@ -146,6 +146,5 @@ if camera is not None:
     marker = scene.timeline_markers.new("RenderCamera", frame=0)
     marker.camera = camera
 
-
 ## set the frame in animation to the frame 0
 scene.frame_set(0)
