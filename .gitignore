@@ -49,6 +49,8 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 
+# Blender files
+2D annotated videos/
 # Logs and local data
 *.log
 MUJOCO_LOG.TXT
