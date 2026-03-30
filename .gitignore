@@ -51,6 +51,8 @@ htmlcov/
 
 # Blender files
 2D annotated videos/
+Blender files/HDRIs/*
+Blender files/Textures/*
 # Logs and local data
 *.log
 MUJOCO_LOG.TXT

@@ -20,6 +20,7 @@ from scipy.spatial.transform import Slerp
 import glfw
 import matplotlib.pyplot as plt
 import argparse
+import traceback
 
 def controller(model, data):
     velocity_controller(model, data)
@@ -92,9 +93,7 @@ def steering_angle_controller(model, data, angle_array, i, plot_data):
 
         plot_data["global_position"].append(np.array(data.qpos[0:3]))
 
-def velocity_controller(model, data):
-    target_velocity_kmh = 15
-    target_velocity = target_velocity_kmh / 3.6
+def velocity_controller(model, data, target_velocity):
     # Compute the local forward (bicycle body X) velocity
     # Get the orientation quaternion of the freejoint (qpos[3:7])
     quat = data.qpos[3:7]
@@ -148,7 +147,6 @@ world.save_world("world.xml")  # save the world XML file
 
 model = mujoco.MjModel.from_xml_string(model_xml)
 data = mujoco.MjData(model)
-mujoco.set_mjcb_control(controller)
 
 # Time control: physics at 200Hz, display at 60Hz
 PHYSICS_HZ = 200
@@ -167,7 +165,8 @@ def update_camera(viewer, data):
     cam.lookat[:] = data.qpos[0:3]
 
 i = 0
-data.qvel[0] = 3
+target_velocity = 15 / 3.6
+data.qvel[0] = target_velocity
 angle_array = np.concatenate((
     np.zeros(100),
     np.linspace(0,90, 400),
@@ -303,7 +302,100 @@ def save_transform_data_csv(transform_data, csv_path):
             for k in keys:
                 row[k] = transform_data[k][i]
             w.writerow(row)
-    
+
+def align_model_to_ground(
+    model,
+    data,
+    height_offsets=None,
+    z_index=2,
+    vertical_force_dof_index=2,
+    verbose=True,
+):
+    """
+    Sweep a small Z offset and choose the value that makes the vertical generalized
+    force (Fz in freejoint coordinates) closest to zero.
+
+    This is a heuristic to avoid the bicycle "jumping down" at initialization.
+    """
+    if height_offsets is None:
+        height_offsets = np.linspace(-0.1, 0.1, 2001)
+
+    height_offsets = np.asarray(height_offsets, dtype=float)
+    if height_offsets.ndim != 1:
+        raise ValueError("height_offsets must be a 1D array-like")
+
+    # In a MuJoCo freejoint, qpos[z_index] is the body's Z position (x,y,z,qw,qx,qy,qz).
+    # qfrc_inverse for the freejoint generalized forces is ordered [Fx,Fy,Fz,Twx,Twy,Twz,...]
+    # so index `vertical_force_dof_index` corresponds to Fz.
+    if z_index >= data.qpos.shape[0]:
+        raise IndexError(f"z_index={z_index} out of bounds for data.qpos shape {data.qpos.shape}")
+    if vertical_force_dof_index >= data.qfrc_inverse.shape[0]:
+        raise IndexError(
+            "vertical_force_dof_index="
+            f"{vertical_force_dof_index} out of bounds for data.qfrc_inverse shape {data.qfrc_inverse.shape}"
+        )
+
+    base_qpos = data.qpos.copy()
+    base_qvel = data.qvel.copy()
+    base_ctrl = data.ctrl.copy() if getattr(data, "ctrl", None) is not None else None
+
+    # Use static inverse dynamics: zero velocities/acceleration and clear externally
+    # applied forces so the sweep isn't biased by controllers.
+    data.qvel[:] = 0.0
+    data.qacc[:] = 0.0
+    if getattr(data, "ctrl", None) is not None:
+        data.ctrl[:] = 0.0
+    if getattr(data, "xfrc_applied", None) is not None:
+        data.xfrc_applied[:] = 0.0
+
+    mujoco.mj_forward(model, data)
+
+    vertical_forces = np.empty(height_offsets.shape[0], dtype=float)
+    for k, offset in enumerate(height_offsets):
+        data.qpos[:] = base_qpos
+        data.qpos[z_index] += float(offset)
+
+        # Keep evaluation "static" regardless of what was in the global state.
+        data.qvel[:] = 0.0
+        data.qacc[:] = 0.0
+        if getattr(data, "ctrl", None) is not None:
+            data.ctrl[:] = 0.0
+        if getattr(data, "xfrc_applied", None) is not None:
+            data.xfrc_applied[:] = 0.0
+
+        mujoco.mj_forward(model, data)
+        mujoco.mj_inverse(model, data)
+        fz = float(data.qfrc_inverse[vertical_force_dof_index])
+        if not np.isfinite(fz):
+            fz = np.inf
+        vertical_forces[k] = fz
+
+    best_idx = int(np.argmin(np.abs(vertical_forces)))
+    best_offset = float(height_offsets[best_idx]) + 0.003
+
+    # Apply the chosen offset and restore the original simulation velocities/control.
+    data.qpos[:] = base_qpos
+    data.qpos[z_index] += best_offset
+    data.qvel[:] = base_qvel
+    data.qacc[:] = 0.0
+    if getattr(data, "ctrl", None) is not None and base_ctrl is not None:
+        data.ctrl[:] = base_ctrl
+    if getattr(data, "xfrc_applied", None) is not None:
+        data.xfrc_applied[:] = 0.0
+    mujoco.mj_forward(model, data)
+
+    if verbose:
+        print(
+            "align_model_to_ground: "
+            f"best_offset={best_offset:.6g}, min|Fz|={abs(vertical_forces[best_idx]):.6g}"
+        )
+    return best_offset
+
+
+# Calibrate once before the simulation starts.
+align_model_to_ground(model, data)
+
+
 if launch_options["viewer"]:
     viewer = mujoco.viewer.launch_passive(model, data, key_callback=on_key)
     try:
@@ -327,6 +419,7 @@ if launch_options["viewer"]:
             if next_physics_time < time.perf_counter():
                 next_physics_time = time.perf_counter()
             steering_angle_controller(model, data, angle_array, i, plot_data)
+            velocity_controller(model, data, target_velocity)
             save_transform_data(model, data, i, transform_data)
             i += 1
     except:
@@ -339,6 +432,7 @@ else:
     while i < len(angle_array):
         mujoco.mj_step(model, data)
         steering_angle_controller(model, data, angle_array, i, plot_data)
+        velocity_controller(model, data, target_velocity)
         save_transform_data(model, data, i, transform_data)
         i += 1
 

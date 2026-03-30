@@ -70,9 +70,17 @@ class Bicycle:
         """
 
         # Couple rear wheel to pedals: rear_angle = gear_ratio * pedal_angle
-        equality_xml = f"""
+        crank_equality_xml = f"""
         <equality>
             <joint joint1="rear wheel hinge" joint2="pedals" polycoef="0 {self.gear_ratio} 0 0 0"/>
+        </equality>
+        """
+
+        # Couple crank rotation to the pedals so they remain horizontal
+        pedal_equality_xml = f"""
+        <equality>
+            <joint joint1="left_pedal_hinge" joint2="pedals" polycoef="0 1 0 0 0"/>
+            <joint joint1="right_pedal_hinge" joint2="pedals" polycoef="0 -1 0 0 0"/>
         </equality>
         """
 
@@ -136,7 +144,8 @@ class Bicycle:
             </default>
 
             {frame_xml}
-            {equality_xml}
+            {crank_equality_xml}
+            {pedal_equality_xml}
             {actuator_xml}
 
             <size njmax="100" nconmax="50"/>

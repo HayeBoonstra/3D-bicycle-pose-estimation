@@ -66,6 +66,12 @@
         </equality>
         
             
+        <equality>
+            <joint joint1="left_pedal_hinge" joint2="pedals" polycoef="0 1 0 0 0"/>
+            <joint joint1="right_pedal_hinge" joint2="pedals" polycoef="0 -1 0 0 0"/>
+        </equality>
+        
+            
         <actuator>
             <motor name="pedal_drive" joint="pedals"/>
             <motor joint="steer"/>
