@@ -99,11 +99,11 @@ for i in range(0, len(tx)):
     crank.rotation_quaternion = crank_q
     crank.keyframe_insert(data_path="rotation_quaternion")
     ## left pedal rotation
-    left_pedal_q = Quaternion((0.0, 1.0, 0.0), np.deg2rad(left_pedal_angle[i]))
+    left_pedal_q = Quaternion((0.0, 1.0, 0.0), np.deg2rad(-left_pedal_angle[i]))
     left_pedal.rotation_quaternion = left_pedal_q
     left_pedal.keyframe_insert(data_path="rotation_quaternion")
     ## right pedal rotation
-    right_pedal_q = Quaternion((0.0, 1.0, 0.0), np.deg2rad(right_pedal_angle[i]))
+    right_pedal_q = Quaternion((0.0, 1.0, 0.0), np.deg2rad(-right_pedal_angle[i]))
     right_pedal.rotation_quaternion = right_pedal_q
     right_pedal.keyframe_insert(data_path="rotation_quaternion")
 
