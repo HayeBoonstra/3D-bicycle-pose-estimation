@@ -4,3 +4,9 @@ matplotlib
 scipy
 glfw
 pyqt5
+rfdetr
+supervision
+inference
+PIL
+io
+requests
