@@ -4,40 +4,6 @@
 #
 # The script works for Mixamo characters downloaded via the mixamo website in FBX ASCII format.
 #
-# Why Mixamo legs misbehave with traditional IK setups:
-# -----------------------------------------------------
-# Mixamo rigs ship with non-zero, inconsistent bone rolls AND a nearly-straight rest
-# pose for the legs. That combination breaks every closed-form `pole_angle` recipe:
-#
-#  - The canonical "rest-pose" formula (Blender wiki) measures a signed angle
-#    around the thigh's Y axis, assuming that axis coincides with the hip->ankle
-#    chain axis. Mixamo violates this because the thigh Y axis points hip->knee,
-#    not hip->ankle, and the small pre-bend means those vectors diverge just
-#    enough to make the right-leg mirror flip sign unpredictably.
-#
-#  - A rest-pose-based EMPIRICAL loop (set pole_angle=0, solve, measure twist,
-#    correct, iterate) works great for already-bent chains, but on a near-straight
-#    chain it is underdetermined: twisting a straight stick changes nothing
-#    observable, so the loop can land on a local minimum that matches rest pose
-#    but has a 180-degree offset from the correct bend direction. That's exactly
-#    why the left leg bent toward the pole but the right leg bent sideways: the
-#    right leg settled into the "wrong half" of the ambiguity.
-#
-# The robust fix is to calibrate pole_angle FROM A BENT CONFIGURATION, where the
-# knee has a well-defined direction. For each leg we:
-#   1. Snapshot the ankle control's rest matrix.
-#   2. Translate the ankle control upward in armature space, forcing the IK to
-#      bend the knee.
-#   3. Iteratively measure the signed angle between the knee direction and the
-#      pole direction (both projected perpendicular to the hip->ankle chain axis)
-#      and add that angle to pole_angle. Near-instant convergence because the
-#      measurement is the exact quantity the solver minimizes internally.
-#   4. Restore the ankle control to its rest matrix.
-#
-# This works regardless of Mixamo's bone rolls, pre-bend magnitude, or mirror
-# conventions because the measurement is made in solved, bent geometry where the
-# bend direction is physically observable.
-#
 # The foot bones (LeftFoot/RightFoot) are intentionally left untouched - they will later
 # be driven by a pedal-tracking constraint added outside this script.
 
