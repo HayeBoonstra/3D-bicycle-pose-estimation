@@ -54,6 +54,7 @@ htmlcov/
 Blender files/HDRIs/*
 Blender files/Textures/*
 Blender files/Characters/*
+Blender files/Scenes/*
 # Logs and local data
 *.log
 MUJOCO_LOG.TXT
