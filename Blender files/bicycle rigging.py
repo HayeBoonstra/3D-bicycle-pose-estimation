@@ -209,7 +209,7 @@ for parent_bone_name, keypoint_name in keypoints:
     keypoint_obj = bpy.data.objects.get(keypoint_name)
     if keypoint_obj is None:
         keypoint_obj = bpy.data.objects.new(keypoint_name, None)
-        keypoint_obj.empty_display_type = 'PLAIN AXES'
+        keypoint_obj.empty_display_type = 'PLAIN_AXES'
         keypoint_obj.empty_display_size = 0.02
         keypoints_collection.objects.link(keypoint_obj)
     elif keypoint_obj.type == 'EMPTY' and keypoint_name not in keypoints_collection.objects:
@@ -220,7 +220,7 @@ for parent_bone_name, keypoint_name in keypoints:
 
     world_matrix = keypoint_obj.matrix_world.copy()
     if keypoint_obj.type == 'EMPTY':
-        keypoint_obj.empty_display_type = 'PLAIN AXES'
+        keypoint_obj.empty_display_type = 'PLAIN_AXES'
         keypoint_obj.empty_display_size = 0.02
     keypoint_obj.parent = armature_object
     keypoint_obj.parent_type = 'BONE'
