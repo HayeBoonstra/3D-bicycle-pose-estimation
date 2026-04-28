@@ -1,0 +1,135 @@
+{
+  "frame": 77,
+  "image_width": 1920,
+  "image_height": 1080,
+  "camera": "Camera",
+  "image_file": "/home/haye/3D-bicycle-pose-estimation/Blender files/2D annotated videos/raw images/frame0077.png",
+  "keypoints": [
+    {
+      "name": "k_bottom_bracket",
+      "x": 1008.7037658691406,
+      "y": 554.0442931652069,
+      "z_cam": 7.303400993347168,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_front_hub_left",
+      "x": 1165.609016418457,
+      "y": 585.6123375892639,
+      "z_cam": 6.886934757232666,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_front_hub_right",
+      "x": 1152.8178405761719,
+      "y": 586.8327212333679,
+      "z_cam": 6.80438232421875,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_front_wheel_back",
+      "x": 1087.679672241211,
+      "y": 572.7878165245056,
+      "z_cam": 7.017543315887451,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_front_wheel_front",
+      "x": 1234.5110321044922,
+      "y": 600.341784954071,
+      "z_cam": 6.673773765563965,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_front_wheel_ground",
+      "x": 1149.0966796875,
+      "y": 671.4182209968567,
+      "z_cam": 6.87748908996582,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_handlebar_left",
+      "x": 1150.3502655029297,
+      "y": 402.4089217185974,
+      "z_cam": 7.154810905456543,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_handlebar_middle",
+      "x": 1124.937400817871,
+      "y": 411.67805671691895,
+      "z_cam": 6.911499977111816,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_handlebar_right",
+      "x": 1079.281997680664,
+      "y": 396.919641494751,
+      "z_cam": 6.709027290344238,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_left_pedal",
+      "x": 996.1094284057617,
+      "y": 523.0124115943909,
+      "z_cam": 7.446791648864746,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_lower_head_tube",
+      "x": 1121.9797897338867,
+      "y": 481.7694568634033,
+      "z_cam": 6.92572546005249,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_rear_hub_left",
+      "x": 933.4342002868652,
+      "y": 533.4324073791504,
+      "z_cam": 7.6371355056762695,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_rear_hub_right",
+      "x": 913.9997863769531,
+      "y": 534.9687337875366,
+      "z_cam": 7.546350479125977,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_rear_wheel_ground",
+      "x": 917.3491859436035,
+      "y": 610.37193775177,
+      "z_cam": 7.636167526245117,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_right_pedal",
+      "x": 1021.7222213745117,
+      "y": 586.6741383075714,
+      "z_cam": 7.159092426300049,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_saddle",
+      "x": 978.881950378418,
+      "y": 423.5248804092407,
+      "z_cam": 7.366633892059326,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_seat_stay",
+      "x": 986.9444274902344,
+      "y": 462.2249722480774,
+      "z_cam": 7.350405693054199,
+      "visible_in_frame": true
+    },
+    {
+      "name": "k_upper_head_tube",
+      "x": 1117.8648376464844,
+      "y": 465.93762159347534,
+      "z_cam": 6.934066295623779,
+      "visible_in_frame": true
+    }
+  ]
+}

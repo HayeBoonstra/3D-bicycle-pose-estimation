@@ -50,11 +50,20 @@ htmlcov/
 .mypy_cache/
 
 # Blender files
-2D annotated videos/
 Blender files/HDRIs/*
 Blender files/Textures/*
 Blender files/Characters/*
 Blender files/Scenes/*
+!Blender files/Scenes/scenes.yaml
+
+# Generated datasets and renders
+raw_renders/
+data/bicycle_pose_dataset/annotations/
+data/bicycle_pose_dataset/images/
+data/bicycle_pose_dataset/metadata/
+data/bicycle_pose_dataset/videos/
+data/bicycle_pose_dataset/overlays/
+data/bicycle_pose_dataset/splits.json
 # Logs and local data
 *.log
 MUJOCO_LOG.TXT

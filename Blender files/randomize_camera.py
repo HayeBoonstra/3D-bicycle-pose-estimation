@@ -1,7 +1,9 @@
 ## this script is used to randomize the camera position in a sphere around the bicycle.
 
-import bpy
+import os
 import random
+
+import bpy
 import numpy as np
 from mathutils import Vector
 scene = bpy.context.scene
@@ -9,6 +11,25 @@ camera = scene.camera
 
 if camera is None:
     raise RuntimeError("No active scene camera. Set scene.camera first.")
+
+seed = os.environ.get("CAMERA_SEED")
+if seed not in {None, ""}:
+    random.seed(int(seed))
+
+
+def resolve_camera_target():
+    target_name = os.environ.get("CAMERA_TARGET", "k_handlebar_middle")
+    candidates = [target_name]
+    if target_name.startswith("k_"):
+        candidates.append(target_name[2:])
+    else:
+        candidates.append(f"k_{target_name}")
+
+    for name in candidates:
+        obj = bpy.data.objects.get(name)
+        if obj is not None:
+            return obj
+    raise KeyError(f"Could not find camera target object. Tried: {candidates}")
 
 ## calculate the randomized parameters
 frame_start = int(scene.frame_start)
@@ -22,7 +43,7 @@ bpy.context.view_layer.update()
 
 # Use evaluated world-space position at the sampled frame.
 # `.location` is local transform and may appear constant if parented/constrained.
-target_obj = bpy.data.objects["k_handlebar_middle"]
+target_obj = resolve_camera_target()
 depsgraph = bpy.context.evaluated_depsgraph_get()
 target_eval = target_obj.evaluated_get(depsgraph)
 bicycle_location = target_eval.matrix_world.translation.copy()

@@ -1,0 +1,30 @@
+# Hand-authored Blender scenes that are allowed to enter dataset rendering.
+# Each .blend should already contain the chosen bicycle, rider, keypoints, and
+# MuJoCo-derived animation baked onto the armatures.
+scenes:
+  - id: gentleman_bicycle
+    blend: "gentleman bicycle.blend"
+    bike: gentleman
+    rider: unknown
+    frame_range: null
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: mountain_bike
+    blend: "mountain bike.blend"
+    bike: mountain
+    rider: unknown
+    frame_range: null
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: swapfiets_bicycle
+    blend: "Swapfiets bicycle.blend"
+    bike: swapfiets
+    rider: unknown
+    frame_range: null
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
