@@ -2,28 +2,10 @@
 # Each .blend should already contain the chosen bicycle, rider, keypoints, and
 # MuJoCo-derived animation baked onto the armatures.
 scenes:
-  - id: gentleman_bicycle
-    blend: "gentleman bicycle.blend"
-    bike: gentleman
-    rider: unknown
-    frame_range: null
-    camera_target: k_handlebar_middle
-    weight: 1.0
-    notes: "Hand-authored scene; update bike/rider/notes when finalized."
-
-  - id: mountain_bike
-    blend: "mountain bike.blend"
-    bike: mountain
-    rider: unknown
-    frame_range: null
-    camera_target: k_handlebar_middle
-    weight: 1.0
-    notes: "Hand-authored scene; update bike/rider/notes when finalized."
-
-  - id: swapfiets_bicycle
-    blend: "Swapfiets bicycle.blend"
-    bike: swapfiets
-    rider: unknown
+  - id: docks scene
+    blend: "docks_scene.blend"
+    bike: kids bike
+    rider: KachujinS
     frame_range: null
     camera_target: k_handlebar_middle
     weight: 1.0
