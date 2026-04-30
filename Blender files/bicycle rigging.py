@@ -85,7 +85,6 @@ armature_object.select_set(True)
 bpy.ops.object.mode_set(mode='EDIT')
 
 edit_bones = armature_data.edit_bones
-# Remove old bones so reruns stay deterministic.
 while edit_bones:
     edit_bones.remove(edit_bones[0])
 

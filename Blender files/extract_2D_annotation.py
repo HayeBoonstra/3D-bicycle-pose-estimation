@@ -10,7 +10,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from tools.bicycle_keypoint_schema import (  # noqa: E402
+PIPELINE_TOOLS_DIR = REPO_ROOT / "data generation pipeline tools"
+if str(PIPELINE_TOOLS_DIR) not in sys.path:
+    sys.path.insert(0, str(PIPELINE_TOOLS_DIR))
+
+from bicycle_keypoint_schema import (  # noqa: E402
     BICYCLE_KEYPOINT_NAMES,
     canonical_keypoint_name,
 )

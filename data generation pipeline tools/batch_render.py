@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from scene_registry import DEFAULT_REGISTRY_PATH, load_scene_registry, sample_sc
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RAW_RENDERS_DIR = REPO_ROOT / "raw_renders"
-RENDER_CLIP_SCRIPT = REPO_ROOT / "tools" / "render_clip.py"
+RENDER_CLIP_SCRIPT = Path(__file__).resolve().parent / "render_clip.py"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -21,6 +22,17 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--num-clips", type=int, required=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--blender", default="blender", help="Path to Blender executable.")
+    parser.add_argument(
+        "--sync-window-size",
+        type=int,
+        default=80,
+        help="Rendered frame window centered on sampled camera frame.",
+    )
+    parser.add_argument(
+        "--no-sync-camera-window",
+        action="store_true",
+        help="Disable camera-sampled frame window synchronization.",
+    )
     parser.add_argument("--encode-video", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
@@ -46,6 +58,8 @@ def _render_command(args: argparse.Namespace, entry, camera_seed: int, clip_dir:
         str(camera_seed),
         "--camera-target",
         entry.camera_target,
+        "--sync-window-size",
+        str(args.sync_window_size),
         "--out",
         str(clip_dir),
         "--bike",
@@ -64,6 +78,8 @@ def _render_command(args: argparse.Namespace, entry, camera_seed: int, clip_dir:
         )
     if args.encode_video:
         command.append("--encode-video")
+    if args.no_sync_camera_window:
+        command.append("--no-sync-camera-window")
     return command
 
 
@@ -71,6 +87,18 @@ def _n_frames(entry) -> str:
     if entry.frame_range is None:
         return ""
     return str(entry.frame_range[1] - entry.frame_range[0] + 1)
+
+
+def _validate_clip_outputs(clip_dir: Path) -> None:
+    annotations_dir = clip_dir / "per_frame_annotations"
+    if not annotations_dir.exists():
+        raise RuntimeError(f"Missing per-frame annotations directory: {annotations_dir}")
+    if not any(annotations_dir.glob("*.json")):
+        raise RuntimeError(f"No annotation JSON files found in: {annotations_dir}")
+    for required_file in ["render_config.json", "camera.json", "keypoints_3d.jsonl"]:
+        required_path = clip_dir / required_file
+        if not required_path.exists():
+            raise RuntimeError(f"Missing required export file: {required_path}")
 
 
 def main() -> None:
@@ -95,19 +123,31 @@ def main() -> None:
         }
 
         if clip_dir.exists() and not args.overwrite:
-            print(f"[batch_render] skipping existing clip: {clip_dir}")
-            row["status"] = "skipped_existing"
-            rows.append(row)
-            continue
+            try:
+                _validate_clip_outputs(clip_dir)
+                print(f"[batch_render] skipping existing clip: {clip_dir}")
+                row["status"] = "skipped_existing"
+                rows.append(row)
+                continue
+            except RuntimeError:
+                print(
+                    "[batch_render] found incomplete existing clip, "
+                    f"re-rendering: {clip_dir}"
+                )
+                shutil.rmtree(clip_dir)
 
         clip_dir.mkdir(parents=True, exist_ok=True)
         command = _render_command(args, entry, camera_seed, clip_dir)
         print(f"[batch_render] rendering {clip_id} from scene {entry.id}")
         try:
             subprocess.run(command, check=True)
+            _validate_clip_outputs(clip_dir)
             row["status"] = "rendered"
-        except subprocess.CalledProcessError as exc:
-            row["status"] = f"failed:{exc.returncode}"
+        except (subprocess.CalledProcessError, RuntimeError) as exc:
+            if isinstance(exc, subprocess.CalledProcessError):
+                row["status"] = f"failed:{exc.returncode}"
+            else:
+                row["status"] = "failed:missing_outputs"
             rows.append(row)
             _write_manifest(manifest_path, rows)
             raise

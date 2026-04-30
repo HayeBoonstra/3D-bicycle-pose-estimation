@@ -54,6 +54,7 @@ Blender files/HDRIs/*
 Blender files/Textures/*
 Blender files/Characters/*
 Blender files/Scenes/*
+Blender files/Bicycles/*
 !Blender files/Scenes/scenes.yaml
 
 # Generated datasets and renders

@@ -45,6 +45,17 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--camera-target", default="k_handlebar_middle")
     parser.add_argument("--frame-start", type=int)
     parser.add_argument("--frame-end", type=int)
+    parser.add_argument(
+        "--sync-window-size",
+        type=int,
+        default=80,
+        help="Rendered window size (frames) centered on sampled camera frame.",
+    )
+    parser.add_argument(
+        "--no-sync-camera-window",
+        action="store_true",
+        help="Disable camera-sampled frame window synchronization.",
+    )
     parser.add_argument("--encode-video", action="store_true")
     parser.add_argument("--fps", type=int)
     return parser.parse_args(_argv_after_double_dash())
@@ -81,6 +92,44 @@ def _run_blender_script(path: Path) -> None:
         raise FileNotFoundError(path)
     print(f"[render_clip] running {path}")
     runpy.run_path(str(path), run_name="__main__")
+
+
+def _synchronize_frame_window(args: argparse.Namespace) -> None:
+    if args.no_sync_camera_window:
+        return
+    if args.sync_window_size < 1:
+        raise ValueError("--sync-window-size must be >= 1")
+
+    scene = bpy.context.scene
+    min_frame = int(args.frame_start) if args.frame_start is not None else int(scene.frame_start)
+    max_frame = int(args.frame_end) if args.frame_end is not None else int(scene.frame_end)
+    if max_frame < min_frame:
+        raise ValueError("frame range is invalid: frame_end must be >= frame_start")
+
+    sample_frame_raw = os.environ.get("CAMERA_SAMPLE_FRAME")
+    if sample_frame_raw in {None, ""}:
+        print("[render_clip] camera sample frame not set; using original frame range")
+        return
+
+    sample_frame = int(sample_frame_raw)
+    window = min(int(args.sync_window_size), max_frame - min_frame + 1)
+    half = window // 2
+    start = sample_frame - half
+    end = start + window - 1
+
+    if start < min_frame:
+        start = min_frame
+        end = start + window - 1
+    if end > max_frame:
+        end = max_frame
+        start = end - window + 1
+
+    scene.frame_start = int(start)
+    scene.frame_end = int(end)
+    print(
+        "[render_clip] synchronized frame window around sampled frame "
+        f"{sample_frame}: {scene.frame_start}-{scene.frame_end} (n={window})"
+    )
 
 
 def _encode_mp4(output_dir: Path, clip_id: str, fps: int, frame_start: int) -> None:
@@ -122,6 +171,7 @@ def main() -> None:
     )
 
     _run_blender_script(RANDOMIZE_CAMERA_SCRIPT)
+    _synchronize_frame_window(args)
     bpy.ops.render.render(animation=True)
     _run_blender_script(EXPORT_SCRIPT)
 

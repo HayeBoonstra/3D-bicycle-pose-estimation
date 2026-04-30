@@ -2,11 +2,11 @@
 # Each .blend should already contain the chosen bicycle, rider, keypoints, and
 # MuJoCo-derived animation baked onto the armatures.
 scenes:
-  - id: docks scene
+  - id: docks_scene
     blend: "docks_scene.blend"
     bike: kids bike
     rider: KachujinS
-    frame_range: null
+    frame_range: [0, 200]
     camera_target: k_handlebar_middle
     weight: 1.0
     notes: "Hand-authored scene; update bike/rider/notes when finalized."

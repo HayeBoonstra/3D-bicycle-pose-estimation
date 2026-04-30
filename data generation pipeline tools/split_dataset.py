@@ -97,7 +97,19 @@ def build_splits(
         by_scene: dict[str, list[str]] = defaultdict(list)
         for clip_id, scene_id in clips:
             by_scene[scene_id].append(clip_id)
-        groups = by_scene.values()
+        # Stratify scene groups only when they are large enough to contribute
+        # train/val/test members on their own. Small groups are pooled and split
+        # globally to avoid ending up with empty val/test sets.
+        stratified_groups: list[list[str]] = []
+        pooled_small_groups: list[str] = []
+        for group in by_scene.values():
+            if len(group) >= 3:
+                stratified_groups.append(group)
+            else:
+                pooled_small_groups.extend(group)
+        groups = stratified_groups
+        if pooled_small_groups:
+            groups.append(pooled_small_groups)
     else:
         groups = [[clip_id for clip_id, _ in clips]]
 
@@ -133,8 +145,15 @@ def main() -> None:
             "val_ratio": args.val,
             "test_ratio": args.test,
             "stratified_by_scene_id": not args.no_stratify,
+            "num_clips_total": len(clips),
         },
     }
+
+    if not payload["val"] or not payload["test"]:
+        print(
+            "[split_dataset] Warning: val/test split is empty. "
+            "Render more clips and/or more scenes to populate all splits."
+        )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8") as f:
