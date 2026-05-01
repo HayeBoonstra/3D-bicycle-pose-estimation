@@ -71,6 +71,7 @@ data/bicycle_pose_dataset/splits.json
 MUJOCO_LOG.TXT
 *.log.*
 *.csv
+raw_renders/*
 
 # OS
 .DS_Store
