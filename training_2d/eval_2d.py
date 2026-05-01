@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -44,10 +45,15 @@ def _compute_basic_histogram(pred_json: Path, gt_json: Path) -> dict:
 
 def main() -> None:
     args = _parse_args()
+    runner = shutil.which("mim")
+    if runner is None:
+        raise RuntimeError(
+            "OpenMMLab runner not found. Install it with: pip install -U openmim"
+        )
     cmd = [
-        "python3",
-        "-m",
-        "mmpose.tools.test",
+        runner,
+        "test",
+        "mmpose",
         str(args.config),
         str(args.checkpoint),
         "--work-dir",

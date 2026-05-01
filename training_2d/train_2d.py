@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -18,10 +19,15 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+    runner = shutil.which("mim")
+    if runner is None:
+        raise RuntimeError(
+            "OpenMMLab runner not found. Install it with: pip install -U openmim"
+        )
     cmd = [
-        "python3",
-        "-m",
-        "mmpose.tools.train",
+        runner,
+        "train",
+        "mmpose",
         str(args.config),
         "--work-dir",
         str(args.work_dir),

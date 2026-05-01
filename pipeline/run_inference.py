@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pipeline.detect_rfdetr import run_detection
 from pipeline.io_utils import dump_json, iter_jsonl, load_json, write_jsonl

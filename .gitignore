@@ -31,6 +31,8 @@ env/
 test-env/
 win-env/
 ENV/
+.venv-mmpose/
+.venv-mmpose311/
 
 # IDE / editor
 .idea/
