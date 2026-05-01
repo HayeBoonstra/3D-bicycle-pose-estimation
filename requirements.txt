@@ -7,6 +7,5 @@ pyqt5
 rfdetr
 supervision
 inference
-PIL
-io
+Pillow
 requests
