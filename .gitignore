@@ -55,11 +55,14 @@ Blender files/HDRIs/*
 Blender files/Textures/*
 Blender files/Characters/*
 Blender files/Scenes/*
+Blender files/Bicycles/*
 # Logs and local data
 *.log
 MUJOCO_LOG.TXT
 *.log.*
 *.csv
+data/*
+raw_renders/*
 
 # OS
 .DS_Store
