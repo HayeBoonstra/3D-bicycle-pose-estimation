@@ -10,3 +10,12 @@ scenes:
     camera_target: k_handlebar_middle
     weight: 1.0
     notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: Tree_lined_scene
+    blend: "Tree_lined_scene.blend"
+    bike: gentlemen bike
+    rider: Sophie
+    frame_range: [0, 200]
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."

@@ -1,7 +1,8 @@
 import bpy
-
-# Set this to your EXR file path.
-EXR_PATH = "/absolute/path/to/your/hdri.exr"
+import os
+# Set this to your EXR file path. for use within blender interface.
+BLENDER_HDRIS_DIR = "~/home/" + os.getenv("USER") + "/3D-bicycle-pose-estimation/Blender files/HDRIs/"
+EXR_PATH = BLENDER_HDRIS_DIR + "modern_evening_street_4k.exr"
 
 # Optional controls.
 BACKGROUND_STRENGTH = 1.0
