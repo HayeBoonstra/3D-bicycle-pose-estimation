@@ -63,7 +63,7 @@ camera_offset = camera_distance * np.array([
 
 camera_location = bicycle_location + Vector(camera_offset)
 # lift camera above the ground if it went under it. Ground is at Z = 0
-camera_location[2] = max(camera_location[2], 0.05)
+camera_location[2] = max(camera_location[2], 0.15)
 # set the camera location
 camera.location = camera_location
 # set the camera rotation so it looks at the bicycle

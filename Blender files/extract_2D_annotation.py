@@ -234,11 +234,14 @@ def export_annotations():
             with output_file.open("w", encoding="utf-8") as f:
                 json.dump(annotations, f, indent=2)
             jsonl.write(json.dumps(keypoints_3d) + "\n")
-            print(
-                f"[{frame}/{end_frame}] wrote {len(annotations['keypoints'])} "
-                f"keypoints -> {output_file}"
+            frame_idx = frame - start_frame + 1
+            progress = (
+                f"\r[annotation-export] {frame_idx}/{frame_count} "
+                f"frames processed"
             )
+            print(progress, end="", flush=True)
 
+    print()
     print(f"Done. Wrote {frame_count} annotation files to: {annotation_dir}")
 
 

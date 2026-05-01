@@ -207,7 +207,7 @@ if keypoints_collection is None:
 for parent_bone_name, keypoint_name in keypoints:
     keypoint_obj = bpy.data.objects.get(keypoint_name)
     if keypoint_obj is None:
-        keypoint_obj = bpy.data.objects.new(keypoint_name, None)
+        keypoint_obj = bpy.data.objects.new("k_" + keypoint_name, None)
         keypoint_obj.empty_display_type = 'PLAIN_AXES'
         keypoint_obj.empty_display_size = 0.02
         keypoints_collection.objects.link(keypoint_obj)

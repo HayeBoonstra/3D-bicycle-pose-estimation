@@ -4,18 +4,21 @@ _base_ = [
 ]
 
 # Runtime
-max_epochs = 120
+max_epochs = 300
 stage2_num_epochs = 20
-base_lr = 4e-3
+base_lr = 8e-4
+input_size = (256, 320)
 
 train_cfg = dict(max_epochs=max_epochs, val_interval=5)
 randomness = dict(seed=21)
 
 # Optimizer
 optim_wrapper = dict(
-    type="OptimWrapper",
+    type="AmpOptimWrapper",
     optimizer=dict(type="AdamW", lr=base_lr, weight_decay=0.05),
     paramwise_cfg=dict(norm_decay_mult=0, bias_decay_mult=0, bypass_duplicate=True),
+    clip_grad=dict(max_norm=1.0, norm_type=2),
+    loss_scale="dynamic",
 )
 
 # Learning rate schedule
@@ -38,12 +41,12 @@ param_scheduler = [
     ),
 ]
 
-auto_scale_lr = dict(base_batch_size=512)
+auto_scale_lr = dict(base_batch_size=320)
 
 # Keypoint codec
 codec = dict(
     type="SimCCLabel",
-    input_size=(192, 256),
+    input_size=input_size,
     sigma=(4.9, 5.66),
     simcc_split_ratio=2.0,
     normalize=False,
@@ -137,7 +140,7 @@ metainfo = dict(
     keypoint_info={idx: dict(name=name, id=idx) for idx, name in enumerate(keypoint_names)},
     skeleton_info={},
     joint_weights=[1.0] * len(keypoint_names),
-    sigmas=[0.0] * len(keypoint_names),
+    sigmas=[0.05] * len(keypoint_names),
 )
 
 # Pipelines
@@ -145,7 +148,7 @@ train_pipeline = [
     dict(type="LoadImage", backend_args=backend_args),
     dict(type="GetBBoxCenterScale"),
     dict(type="RandomFlip", direction="horizontal"),
-    dict(type="RandomBBoxTransform", scale_factor=[0.7, 1.3], rotate_factor=45),
+    dict(type="RandomBBoxTransform", scale_factor=[1.0, 1.2], rotate_factor=45),
     dict(type="TopdownAffine", input_size=codec["input_size"]),
     dict(type="mmdet.YOLOXHSVRandomAug"),
     dict(type="GenerateTarget", encoder=codec),
@@ -172,7 +175,7 @@ train_pipeline_stage2 = [
 
 # Data loaders
 train_dataloader = dict(
-    batch_size=64,
+    batch_size=50,
     num_workers=8,
     persistent_workers=True,
     sampler=dict(type="DefaultSampler", shuffle=True),
@@ -188,7 +191,7 @@ train_dataloader = dict(
 )
 
 val_dataloader = dict(
-    batch_size=32,
+    batch_size=50,
     num_workers=4,
     persistent_workers=True,
     drop_last=False,
@@ -206,7 +209,7 @@ val_dataloader = dict(
 )
 
 test_dataloader = dict(
-    batch_size=32,
+    batch_size=50,
     num_workers=4,
     persistent_workers=True,
     drop_last=False,
@@ -239,4 +242,14 @@ custom_hooks = [
 
 val_evaluator = dict(type="CocoMetric", ann_file=f"{data_root}/annotations/val.json")
 test_evaluator = dict(type="CocoMetric", ann_file=f"{data_root}/annotations/test.json")
+
+vis_backends = [
+    dict(type="LocalVisBackend"),
+    dict(type="TensorboardVisBackend"),
+]
+visualizer = dict(
+    type="PoseLocalVisualizer",
+    vis_backends=vis_backends,
+    name="visualizer",
+)
 

@@ -74,6 +74,8 @@ MUJOCO_LOG.TXT
 *.log.*
 *.csv
 raw_renders/*
+outputs/*
+
 
 # OS
 .DS_Store

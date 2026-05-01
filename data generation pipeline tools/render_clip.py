@@ -13,6 +13,7 @@ blender --background "Blender files/Scenes/mountain bike.blend" \
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import runpy
 import shutil
@@ -94,6 +95,62 @@ def _run_blender_script(path: Path) -> None:
     runpy.run_path(str(path), run_name="__main__")
 
 
+@contextlib.contextmanager
+def _silence_stdout_stderr():
+    """Temporarily silence noisy Blender C-level render logs."""
+    stdout_fd = sys.stdout.fileno()
+    stderr_fd = sys.stderr.fileno()
+    saved_stdout = os.dup(stdout_fd)
+    saved_stderr = os.dup(stderr_fd)
+    try:
+        with open(os.devnull, "w", encoding="utf-8") as devnull:
+            os.dup2(devnull.fileno(), stdout_fd)
+            os.dup2(devnull.fileno(), stderr_fd)
+            yield saved_stdout
+    finally:
+        os.dup2(saved_stdout, stdout_fd)
+        os.dup2(saved_stderr, stderr_fd)
+        os.close(saved_stdout)
+        os.close(saved_stderr)
+
+
+@contextlib.contextmanager
+def _render_progress(scene, output_fd: int) -> None:
+    """Print one in-place progress line while Blender renders animation frames."""
+    frame_start = int(scene.frame_start)
+    frame_end = int(scene.frame_end)
+    total_frames = max(1, frame_end - frame_start + 1)
+    state = {"last_frame": None, "printed": False}
+
+    def _write(message: str) -> None:
+        try:
+            os.write(output_fd, message.encode("utf-8", errors="replace"))
+        except OSError:
+            # If the output stream is gone, avoid crashing the render.
+            pass
+
+    def _on_render_write(_scene, _depsgraph):
+        current_frame = int(_scene.frame_current)
+        if state["last_frame"] == current_frame:
+            return
+        state["last_frame"] = current_frame
+        done = max(0, min(total_frames, current_frame - frame_start + 1))
+        _write(
+            f"\r[render_clip] rendering frame {done}/{total_frames} "
+            f"(scene frame {current_frame})"
+        )
+        state["printed"] = True
+
+    bpy.app.handlers.render_write.append(_on_render_write)
+    try:
+        yield
+    finally:
+        if _on_render_write in bpy.app.handlers.render_write:
+            bpy.app.handlers.render_write.remove(_on_render_write)
+        if state["printed"]:
+            _write("\n")
+
+
 def _synchronize_frame_window(args: argparse.Namespace) -> None:
     if args.no_sync_camera_window:
         return
@@ -172,7 +229,11 @@ def main() -> None:
 
     _run_blender_script(RANDOMIZE_CAMERA_SCRIPT)
     _synchronize_frame_window(args)
-    bpy.ops.render.render(animation=True)
+    print("[render_clip] rendering frames...")
+    with _silence_stdout_stderr() as terminal_fd:
+        with _render_progress(scene, terminal_fd):
+            bpy.ops.render.render(animation=True)
+    print("[render_clip] rendering complete")
     _run_blender_script(EXPORT_SCRIPT)
 
     if args.encode_video:
