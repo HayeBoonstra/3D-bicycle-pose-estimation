@@ -85,7 +85,6 @@ armature_object.select_set(True)
 bpy.ops.object.mode_set(mode='EDIT')
 
 edit_bones = armature_data.edit_bones
-# Remove old bones so reruns stay deterministic.
 while edit_bones:
     edit_bones.remove(edit_bones[0])
 
@@ -190,9 +189,9 @@ keypoints = [
     ("b_left_pedal", "left_pedal_tracker"),
     ("b_right_pedal", "right_pedal"),
     ("b_right_pedal", "right_pedal_tracker"),
-    ("b_steer", "handle_bar_middle"),
-    ("b_steer", "handle_bar_left"),
-    ("b_steer", "handle_bar_right"),
+    ("b_steer", "handlebar_middle"),
+    ("b_steer", "handlebar_left"),
+    ("b_steer", "handlebar_right"),
     ("b_steer", "front_hub_left"),
     ("b_steer", "front_hub_right"),
     ("b_steer", "front_wheel_back"),
