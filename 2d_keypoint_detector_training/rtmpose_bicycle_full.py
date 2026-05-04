@@ -4,8 +4,8 @@ _base_ = [
 ]
 
 # Runtime
-max_epochs = 300
-stage2_num_epochs = 20
+max_epochs = 1000
+stage2_num_epochs = 100
 base_lr = 5e-4
 input_size = (256, 320)
 
@@ -151,12 +151,12 @@ metainfo = dict(
     0.05,  # handlebar_right
     0.03,  # front_hub_left
     0.03,  # front_hub_right
-    0.06,  # front_wheel_back
-    0.06,  # front_wheel_front
-    0.08,  # front_wheel_ground
+    0.03,  # front_wheel_back
+    0.03,  # front_wheel_front
+    0.03,  # front_wheel_ground
     0.03,  # rear_hub_left
     0.03,  # rear_hub_right
-    0.08,  # rear_wheel_ground
+    0.03,  # rear_wheel_ground
     0.05,  # left_pedal
     0.05   # right_pedal
 ],
@@ -185,7 +185,7 @@ train_pipeline_stage2 = [
     dict(type="LoadImage", backend_args=backend_args),
     dict(type="GetBBoxCenterScale"),
     dict(type="RandomFlip", direction="horizontal"),
-    dict(type="RandomBBoxTransform", shift_factor=0.0, scale_factor=[0.8, 1.2], rotate_factor=30),
+    dict(type="RandomBBoxTransform", shift_factor=0.0, scale_factor=[1.0, 1.2], rotate_factor=30),
     dict(type="TopdownAffine", input_size=codec["input_size"]),
     dict(type="mmdet.YOLOXHSVRandomAug"),
     dict(type="GenerateTarget", encoder=codec),
@@ -195,7 +195,7 @@ train_pipeline_stage2 = [
 # Data loaders
 train_dataloader = dict(
     batch_size=50,
-    num_workers=8,
+    num_workers=12,
     persistent_workers=True,
     sampler=dict(type="DefaultSampler", shuffle=True),
     dataset=dict(
@@ -211,7 +211,7 @@ train_dataloader = dict(
 
 val_dataloader = dict(
     batch_size=50,
-    num_workers=4,
+    num_workers=6,
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
@@ -229,7 +229,7 @@ val_dataloader = dict(
 
 test_dataloader = dict(
     batch_size=50,
-    num_workers=4,
+    num_workers=6,
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),

@@ -10,11 +10,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from bicycle_keypoint_schema import (
-    BICYCLE_KEYPOINT_NAMES,
-    CATEGORY_ID,
-    coco_category,
-)
+
+try:
+    # Works when invoked as a module from repo root:
+    # python -m data_generation_pipeline_tools.convert_to_coco
+    from data_generation_pipeline_tools.bicycle_keypoint_schema import (
+        BICYCLE_KEYPOINT_NAMES,
+        CATEGORY_ID,
+        coco_category,
+    )
+except ModuleNotFoundError:
+    # Works when invoked directly as a script:
+    # python data_generation_pipeline_tools/convert_to_coco.py
+    from bicycle_keypoint_schema import (  # type: ignore
+        BICYCLE_KEYPOINT_NAMES,
+        CATEGORY_ID,
+        coco_category,
+    )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RAW_RENDERS_DIR = REPO_ROOT / "raw_renders"

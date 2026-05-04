@@ -57,6 +57,12 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--device", default="cuda:0", help="Inference device, e.g. cuda:0 or cpu.")
     parser.add_argument("--limit", type=int, default=None, help="Optional maximum number of images.")
+    parser.add_argument(
+        "--draw-skeleton",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Draw skeleton links on output visualization images.",
+    )
     return parser.parse_args()
 
 
@@ -131,6 +137,7 @@ def main() -> None:
                 pred_out_dir=str(args.pred_out_dir),
                 vis_out_dir=str(args.vis_out_dir),
                 return_vis=False,
+                draw_skeleton=args.draw_skeleton,
             )
             result = next(result_iter)
             _rename_inferencer_outputs(

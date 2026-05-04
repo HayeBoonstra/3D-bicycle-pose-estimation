@@ -6,7 +6,7 @@ scenes:
     blend: "docks_scene.blend"
     bike: kids bike
     rider: KachujinS
-    frame_range: [0, 200]
+    frame_range: [0, 540]
     camera_target: k_handlebar_middle
     weight: 1.0
     notes: "Hand-authored scene; update bike/rider/notes when finalized."
@@ -15,7 +15,7 @@ scenes:
     blend: "tree_lined_scene.blend"
     bike: gentlemen bike
     rider: Sophie
-    frame_range: [0, 601]
+    frame_range: [0, 600]
     camera_target: k_handlebar_middle
     weight: 1.0
     notes: "Hand-authored scene; update bike/rider/notes when finalized."
@@ -24,7 +24,16 @@ scenes:
     blend: "evening_street_scene.blend"
     bike: Swapfiets
     rider: Josh
-    frame_range: [0, 601]
+    frame_range: [0, 600]
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: german_outskirts_scene
+    blend: "german_outskirts_scene.blend"
+    bike: Mountain bike
+    rider: James
+    frame_range: [0, 540]
     camera_target: k_handlebar_middle
     weight: 1.0
     notes: "Hand-authored scene; update bike/rider/notes when finalized."

@@ -11,18 +11,26 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-PIPELINE_TOOLS_DIR = REPO_ROOT / "data generation pipeline tools"
+PIPELINE_TOOLS_DIR = REPO_ROOT / "data_generation_pipeline_tools"
 if str(PIPELINE_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(PIPELINE_TOOLS_DIR))
-
-from bicycle_keypoint_schema import (  # noqa: E402
-    BICYCLE_KEYPOINT_NAMES,
-    canonical_keypoint_name,
-)
+from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, canonical_keypoint_name
 
 COLLECTION_NAME = "Keypoints"
 BICYCLE_MESH_COLLECTION = os.environ.get("BICYCLE_BBOX_COLLECTION", "Bicycle")
 DEFAULT_CLIP_ID = "interactive_clip"
+
+
+def _env_flag(name, default=True):
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    value = str(raw_value).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def _matrix_to_list(matrix):
@@ -152,6 +160,8 @@ def export_annotations():
     if cam is None:
         raise RuntimeError("No active scene camera. Set scene.camera first.")
 
+    quiet_mode = _env_flag("QUIET_MODE", default=True)
+
     kp_col = bpy.data.collections.get(COLLECTION_NAME)
     if kp_col is None:
         raise RuntimeError(f'Collection "{COLLECTION_NAME}" not found.')
@@ -170,7 +180,7 @@ def export_annotations():
     width, height = _render_size(scene)
     keypoint_objects = _keypoint_objects(kp_col)
     missing = sorted(set(BICYCLE_KEYPOINT_NAMES) - set(keypoint_objects))
-    if missing:
+    if missing and not quiet_mode:
         print(f"[annotation-export] Warning: missing keypoint empties: {missing}")
 
     start_frame = int(scene.frame_start)
@@ -283,10 +293,12 @@ def export_annotations():
                 f"\r[annotation-export] {frame_idx}/{frame_count} "
                 f"frames processed"
             )
-            print(progress, end="", flush=True)
+            if not quiet_mode:
+                print(progress, end="", flush=True)
 
-    print()
-    print(f"Done. Wrote {frame_count} annotation files to: {annotation_dir}")
+    if not quiet_mode:
+        print()
+        print(f"Done. Wrote {frame_count} annotation files to: {annotation_dir}")
 
 
 export_annotations()

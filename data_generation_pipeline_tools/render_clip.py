@@ -26,6 +26,7 @@ import bpy
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BLENDER_FILES_DIR = REPO_ROOT / "Blender files"
 RANDOMIZE_CAMERA_SCRIPT = BLENDER_FILES_DIR / "randomize_camera.py"
+RANDOMIZE_FOG_SCRIPT = BLENDER_FILES_DIR / "randomize_fog.py"
 EXPORT_SCRIPT = BLENDER_FILES_DIR / "extract_2D_annotation.py"
 
 
@@ -239,6 +240,7 @@ def main() -> None:
         )
 
     _run_blender_script(RANDOMIZE_CAMERA_SCRIPT, args.quiet_mode)
+    _run_blender_script(RANDOMIZE_FOG_SCRIPT, args.quiet_mode)
     _synchronize_frame_window(args)
     if not args.quiet_mode:
         print("[render_clip] rendering frames...")
