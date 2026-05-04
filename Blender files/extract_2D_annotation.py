@@ -5,6 +5,7 @@ from pathlib import Path
 
 import bpy
 from bpy_extras.object_utils import world_to_camera_view
+from mathutils import Vector
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -20,6 +21,7 @@ from bicycle_keypoint_schema import (  # noqa: E402
 )
 
 COLLECTION_NAME = "Keypoints"
+BICYCLE_MESH_COLLECTION = os.environ.get("BICYCLE_BBOX_COLLECTION", "Bicycle")
 DEFAULT_CLIP_ID = "interactive_clip"
 
 
@@ -108,6 +110,40 @@ def _keypoint_objects(collection):
         if canonical_name in BICYCLE_KEYPOINT_NAMES:
             objects[canonical_name] = obj
     return objects
+
+
+def _gt_bbox_xywh_from_bicycle_meshes(scene, cam, depsgraph, width, height, collection_name):
+    """Axis-aligned 2D bbox in pixel space from Bicycle collection mesh bound boxes.
+
+    Uses world-space corners of each mesh's bound_box projected through the camera.
+    Corners behind the camera (z <= 0 in normalized device coords) are skipped.
+    Returns None if the collection is missing or no in-front corners were found.
+    """
+    col = bpy.data.collections.get(collection_name)
+    if col is None:
+        return None
+
+    xs: list[float] = []
+    ys: list[float] = []
+    for obj in col.all_objects:
+        if obj.type != "MESH":
+            continue
+        obj_eval = obj.evaluated_get(depsgraph)
+        matrix_world = obj_eval.matrix_world
+        for corner in obj_eval.bound_box:
+            world_co = matrix_world @ Vector(corner)
+            co_ndc = world_to_camera_view(scene, cam, world_co)
+            if co_ndc.z <= 0.0:
+                continue
+            xs.append(float(co_ndc.x * width))
+            ys.append(float((1.0 - co_ndc.y) * height))
+
+    if not xs:
+        return None
+
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    return [x_min, y_min, max(1.0, x_max - x_min), max(1.0, y_max - y_min)]
 
 
 def export_annotations():
@@ -229,6 +265,14 @@ def export_annotations():
                     }
                 )
                 keypoints_3d["kps_world"].append(_vector_to_list(world_co))
+
+            mesh_bbox = _gt_bbox_xywh_from_bicycle_meshes(
+                scene, cam, depsgraph, width, height, BICYCLE_MESH_COLLECTION
+            )
+            if mesh_bbox is not None:
+                annotations["gt_bbox_xywh"] = mesh_bbox
+                annotations["gt_bbox_source"] = "bicycle_mesh"
+                annotations["gt_bbox_collection"] = BICYCLE_MESH_COLLECTION
 
             output_file = annotation_dir / f"keypoints_2d_frame_{frame:04d}.json"
             with output_file.open("w", encoding="utf-8") as f:

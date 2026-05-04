@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from pipeline.preprocess_roi import crop_and_resize
+from keypoint_detector_pipeline.preprocess_roi import crop_and_resize
 
 
 class RoiTransformTests(unittest.TestCase):

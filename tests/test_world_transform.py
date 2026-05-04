@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from pipeline.world_transform import CameraModel, camera_to_world, world_to_camera
+from keypoint_detector_pipeline.world_transform import CameraModel, camera_to_world, world_to_camera
 
 
 class WorldTransformTests(unittest.TestCase):

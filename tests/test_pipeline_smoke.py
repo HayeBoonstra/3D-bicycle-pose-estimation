@@ -6,8 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
-from pipeline.lift3d_ssm import TemporalSSMLifter
-from pipeline.sequence_builder import build_temporal_windows
+from keypoint_detector_pipeline.lift3d_ssm import TemporalSSMLifter
+from keypoint_detector_pipeline.sequence_builder import build_temporal_windows
 
 
 class PipelineSmokeTests(unittest.TestCase):

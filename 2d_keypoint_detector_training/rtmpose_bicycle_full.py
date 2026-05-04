@@ -6,7 +6,7 @@ _base_ = [
 # Runtime
 max_epochs = 300
 stage2_num_epochs = 20
-base_lr = 8e-4
+base_lr = 5e-4
 input_size = (256, 320)
 
 train_cfg = dict(max_epochs=max_epochs, val_interval=5)
@@ -140,7 +140,26 @@ metainfo = dict(
     keypoint_info={idx: dict(name=name, id=idx) for idx, name in enumerate(keypoint_names)},
     skeleton_info={},
     joint_weights=[1.0] * len(keypoint_names),
-    sigmas=[0.05] * len(keypoint_names),
+    sigmas = [
+    0.03,  # bottom_bracket
+    0.05,  # seat_stay
+    0.07,  # saddle
+    0.05,  # upper_head_tube
+    0.04,  # lower_head_tube
+    0.05,  # handlebar_left
+    0.03,  # handlebar_middle
+    0.05,  # handlebar_right
+    0.03,  # front_hub_left
+    0.03,  # front_hub_right
+    0.06,  # front_wheel_back
+    0.06,  # front_wheel_front
+    0.08,  # front_wheel_ground
+    0.03,  # rear_hub_left
+    0.03,  # rear_hub_right
+    0.08,  # rear_wheel_ground
+    0.05,  # left_pedal
+    0.05   # right_pedal
+],
 )
 
 # Pipelines

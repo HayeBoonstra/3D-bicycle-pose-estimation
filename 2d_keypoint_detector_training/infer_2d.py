@@ -40,19 +40,19 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--vis-out-dir",
         type=Path,
-        default=Path("outputs/inference_2d/vis"),
+        default=Path("training_outputs/inference_2d/vis"),
         help="Directory for rendered visualization images.",
     )
     parser.add_argument(
         "--pred-out-dir",
         type=Path,
-        default=Path("outputs/inference_2d/preds"),
+        default=Path("training_outputs/inference_2d/preds"),
         help="Directory for per-image prediction json files.",
     )
     parser.add_argument(
         "--summary-jsonl",
         type=Path,
-        default=Path("outputs/inference_2d/predictions.jsonl"),
+        default=Path("training_outputs/inference_2d/predictions.jsonl"),
         help="Path for a consolidated prediction JSONL.",
     )
     parser.add_argument("--device", default="cuda:0", help="Inference device, e.g. cuda:0 or cpu.")
@@ -68,6 +68,32 @@ def _iter_images(path: Path) -> Iterable[Path]:
     for pattern in patterns:
         for image_path in sorted(path.rglob(pattern)):
             yield image_path
+
+
+def _rename_inferencer_outputs(
+    vis_out_dir: Path,
+    pred_out_dir: Path,
+    image_path: Path,
+    frame_index: int,
+) -> None:
+    """MMPose names outputs from the image basename; many clips share frame_0000.
+
+    Rename the saved vis image and pred json to a single ascending sequence.
+    """
+    suffix = image_path.suffix.lower() if image_path.suffix else ".png"
+    stem = image_path.stem
+
+    src_vis = vis_out_dir / image_path.name
+    dst_vis = vis_out_dir / f"frame_{frame_index:06d}{suffix}"
+    if src_vis.exists() and src_vis.resolve() != dst_vis.resolve():
+        dst_vis.unlink(missing_ok=True)
+        src_vis.rename(dst_vis)
+
+    src_pred = pred_out_dir / f"{stem}.json"
+    dst_pred = pred_out_dir / f"frame_{frame_index:06d}.json"
+    if src_pred.exists() and src_pred.resolve() != dst_pred.resolve():
+        dst_pred.unlink(missing_ok=True)
+        src_pred.rename(dst_pred)
 
 
 def main() -> None:
@@ -99,7 +125,7 @@ def main() -> None:
 
     print(f"Running inference on {len(image_paths)} image(s)...")
     with args.summary_jsonl.open("w", encoding="utf-8") as f:
-        for index, image_path in enumerate(image_paths, start=1):
+        for frame_index, image_path in enumerate(image_paths):
             result_iter = inferencer(
                 str(image_path),
                 pred_out_dir=str(args.pred_out_dir),
@@ -107,12 +133,19 @@ def main() -> None:
                 return_vis=False,
             )
             result = next(result_iter)
+            _rename_inferencer_outputs(
+                args.vis_out_dir,
+                args.pred_out_dir,
+                image_path,
+                frame_index,
+            )
             row = {
                 "image_path": str(image_path),
                 "predictions": _to_jsonable(result.get("predictions", [])),
             }
             f.write(json.dumps(row) + "\n")
-            print(f"[{index}/{len(image_paths)}] {image_path}")
+            done = frame_index + 1
+            print(f"[{done}/{len(image_paths)}] {image_path}")
 
     print("Done.")
     print(f"- Visualizations: {args.vis_out_dir}")

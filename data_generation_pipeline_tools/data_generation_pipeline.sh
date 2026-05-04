@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-TOOLS_DIR="${REPO_ROOT}/data generation pipeline tools"
+TOOLS_DIR="${REPO_ROOT}/data_generation_pipeline_tools"
 DEFAULT_DATASET_DIR="${REPO_ROOT}/data/bicycle_pose_dataset"
 DEFAULT_SPLITS="${DEFAULT_DATASET_DIR}/splits.json"
 DEFAULT_TRAIN_JSON="${DEFAULT_DATASET_DIR}/annotations/train.json"
@@ -15,9 +15,10 @@ SKIP_VIS=0
 BLENDER_BIN="blender"
 RAW_RENDERS_DIR="${REPO_ROOT}/raw_renders"
 DATASET_DIR="${DEFAULT_DATASET_DIR}"
-OUTSIDE_VISIBILITY="occluded"
+OUTSIDE_VISIBILITY="unlabeled"
 SYNC_WINDOW_SIZE=80
 DISABLE_SYNC_CAMERA_WINDOW=0
+PARALLEL_JOBS=2
 
 usage() {
   cat <<EOF
@@ -34,6 +35,7 @@ Options:
   --dataset-dir DIR        Output dataset dir (default: ${DATASET_DIR})
   --outside-visibility V   convert_to_coco policy: occluded|unlabeled (default: ${OUTSIDE_VISIBILITY})
   --sync-window-size N     Frames per clip around sampled camera frame (default: ${SYNC_WINDOW_SIZE})
+  --parallel-jobs N        Number of Blender clips to render concurrently (default: ${PARALLEL_JOBS})
   --no-sync-camera-window  Disable camera-sampled frame-window synchronization
   --encode-video           Encode MP4 during render + overlay stage
   --skip-visualize         Skip visualize_coco stage
@@ -99,6 +101,10 @@ while [[ $# -gt 0 ]]; do
       SYNC_WINDOW_SIZE="$2"
       shift 2
       ;;
+    --parallel-jobs)
+      PARALLEL_JOBS="$2"
+      shift 2
+      ;;
     --no-sync-camera-window)
       DISABLE_SYNC_CAMERA_WINDOW=1
       shift
@@ -142,6 +148,10 @@ if [[ "$SYNC_WINDOW_SIZE" -lt 1 ]]; then
   echo "--sync-window-size must be >= 1" >&2
   exit 1
 fi
+if [[ "$PARALLEL_JOBS" -lt 1 ]]; then
+  echo "--parallel-jobs must be >= 1" >&2
+  exit 1
+fi
 
 SPLITS_PATH="${DATASET_DIR}/splits.json"
 TRAIN_JSON_PATH="${DATASET_DIR}/annotations/train.json"
@@ -162,6 +172,7 @@ RENDER_ARGS=(
   --seed "${SEED}"
   --blender "${RESOLVED_BLENDER_BIN}"
   --sync-window-size "${SYNC_WINDOW_SIZE}"
+  --jobs "${PARALLEL_JOBS}"
   --out "${RAW_RENDERS_DIR}"
 )
 if [[ "$ENCODE_VIDEO" -eq 1 ]]; then
@@ -171,6 +182,20 @@ if [[ "$DISABLE_SYNC_CAMERA_WINDOW" -eq 1 ]]; then
   RENDER_ARGS+=(--no-sync-camera-window)
 fi
 "${RENDER_ARGS[@]}"
+
+RAW_CLIP_COUNT="$(python3 - <<'PY' "${RAW_RENDERS_DIR}"
+from pathlib import Path
+import sys
+raw = Path(sys.argv[1])
+count = sum(1 for p in raw.iterdir() if p.is_dir() and (p / "per_frame_annotations").exists())
+print(count)
+PY
+)"
+echo "[pipeline] discovered raw clips with annotations: ${RAW_CLIP_COUNT}"
+if [[ "${RAW_CLIP_COUNT}" -lt 1 ]]; then
+  echo "[pipeline] ERROR: no raw clips found under ${RAW_RENDERS_DIR}" >&2
+  exit 1
+fi
 
 echo "[pipeline] creating train/val/test split..."
 python3 "${TOOLS_DIR}/split_dataset.py" \
@@ -185,12 +210,45 @@ python3 "${TOOLS_DIR}/convert_to_coco.py" \
   --splits "${SPLITS_PATH}" \
   --outside-visibility "${OUTSIDE_VISIBILITY}"
 
+COCO_IMAGE_COUNT="$(python3 - <<'PY' "${TRAIN_JSON_PATH}"
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+if not path.exists():
+    print(0)
+else:
+    with path.open("r", encoding="utf-8") as f:
+        data = json.load(f)
+    print(len(data.get("images", [])))
+PY
+)"
+echo "[pipeline] COCO train images: ${COCO_IMAGE_COUNT}"
+if [[ "${COCO_IMAGE_COUNT}" -lt 1 ]]; then
+  echo "[pipeline] ERROR: train COCO has zero images at ${TRAIN_JSON_PATH}" >&2
+  exit 1
+fi
+PARALLEL_JOBS="$(nproc 2>/dev/null || echo 1)"
 if [[ "$SKIP_VIS" -eq 0 ]]; then
   echo "[pipeline] generating overlays..."
   python3 "${TOOLS_DIR}/visualize_coco.py" \
     --coco "${TRAIN_JSON_PATH}" \
     --dataset-dir "${DATASET_DIR}" \
+    --jobs "${PARALLEL_JOBS}" \
     "${VIS_ARGS[@]}"
+
+  OVERLAY_COUNT="$(python3 - <<'PY' "${DATASET_DIR}/overlays"
+from pathlib import Path
+import sys
+root = Path(sys.argv[1])
+print(sum(1 for _ in root.rglob("*.png")) if root.exists() else 0)
+PY
+)"
+  echo "[pipeline] overlay frames written: ${OVERLAY_COUNT}"
+  if [[ "${OVERLAY_COUNT}" -lt 1 ]]; then
+    echo "[pipeline] ERROR: overlays directory is empty at ${DATASET_DIR}/overlays" >&2
+    exit 1
+  fi
 else
   echo "[pipeline] skipping visualization stage."
 fi

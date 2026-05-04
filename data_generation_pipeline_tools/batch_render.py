@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import csv
+import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 from scene_registry import DEFAULT_REGISTRY_PATH, load_scene_registry, sample_scenes
@@ -34,6 +37,12 @@ def _parse_args() -> argparse.Namespace:
         help="Disable camera-sampled frame window synchronization.",
     )
     parser.add_argument("--encode-video", action="store_true")
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=max(1, os.cpu_count() or 1),
+        help="Maximum number of clips to render in parallel.",
+    )
     parser.add_argument("--overwrite", action="store_true")
     return parser.parse_args()
 
@@ -101,19 +110,54 @@ def _validate_clip_outputs(clip_dir: Path) -> None:
             raise RuntimeError(f"Missing required export file: {required_path}")
 
 
+def _render_one(
+    args: argparse.Namespace,
+    entry,
+    camera_seed: int,
+    clip_dir: Path,
+) -> None:
+    command = _render_command(args, entry, camera_seed, clip_dir)
+    print(f"[batch_render] rendering {clip_dir.name} from scene {entry.id}")
+    subprocess.run(command, check=True)
+    _validate_clip_outputs(clip_dir)
+
+
+def _timed_render_one(
+    args: argparse.Namespace,
+    entry,
+    camera_seed: int,
+    clip_dir: Path,
+) -> float:
+    started = time.perf_counter()
+    _render_one(args, entry, camera_seed, clip_dir)
+    return time.perf_counter() - started
+
+
+def _format_duration(seconds: float) -> str:
+    total_seconds = max(0, int(round(seconds)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours > 0:
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+    return f"{minutes:02d}:{secs:02d}"
+
+
 def main() -> None:
     args = _parse_args()
+    if args.jobs < 1:
+        raise ValueError("--jobs must be >= 1")
     args.out.mkdir(parents=True, exist_ok=True)
     manifest_path = args.out / "manifest.csv"
 
     entries = load_scene_registry(args.registry)
     sampled = sample_scenes(entries, args.num_clips, args.seed)
-    rows: list[dict[str, str]] = []
+    rows_by_clip_id: dict[str, dict[str, str]] = {}
+    render_tasks: list[tuple] = []
 
     for entry, camera_seed in sampled:
         clip_id = _clip_id(entry.id, camera_seed)
         clip_dir = args.out / clip_id
-        row = {
+        rows_by_clip_id[clip_id] = {
             "clip_id": clip_id,
             "scene_id": entry.id,
             "blend": str(entry.blend_path),
@@ -121,13 +165,13 @@ def main() -> None:
             "n_frames": _n_frames(entry),
             "status": "pending",
         }
+        row = rows_by_clip_id[clip_id]
 
         if clip_dir.exists() and not args.overwrite:
             try:
                 _validate_clip_outputs(clip_dir)
                 print(f"[batch_render] skipping existing clip: {clip_dir}")
                 row["status"] = "skipped_existing"
-                rows.append(row)
                 continue
             except RuntimeError:
                 print(
@@ -137,25 +181,59 @@ def main() -> None:
                 shutil.rmtree(clip_dir)
 
         clip_dir.mkdir(parents=True, exist_ok=True)
-        command = _render_command(args, entry, camera_seed, clip_dir)
-        print(f"[batch_render] rendering {clip_id} from scene {entry.id}")
-        try:
-            subprocess.run(command, check=True)
-            _validate_clip_outputs(clip_dir)
-            row["status"] = "rendered"
-        except (subprocess.CalledProcessError, RuntimeError) as exc:
-            if isinstance(exc, subprocess.CalledProcessError):
-                row["status"] = f"failed:{exc.returncode}"
-            else:
-                row["status"] = "failed:missing_outputs"
-            rows.append(row)
-            _write_manifest(manifest_path, rows)
-            raise
-        rows.append(row)
-        _write_manifest(manifest_path, rows)
+        render_tasks.append((entry, camera_seed, clip_dir, clip_id))
 
-    _write_manifest(manifest_path, rows)
+    _write_manifest(manifest_path, list(rows_by_clip_id.values()))
+
+    max_workers = min(args.jobs, len(render_tasks))
+    if max_workers > 0:
+        total_to_render = len(render_tasks)
+        completed = 0
+        rendered = 0
+        failed = 0
+        clip_durations_sec: list[float] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_clip_id = {
+                executor.submit(_timed_render_one, args, entry, camera_seed, clip_dir): clip_id
+                for entry, camera_seed, clip_dir, clip_id in render_tasks
+            }
+            for future in concurrent.futures.as_completed(future_to_clip_id):
+                clip_id = future_to_clip_id[future]
+                row = rows_by_clip_id[clip_id]
+                completed += 1
+                try:
+                    clip_duration = future.result()
+                    row["status"] = "rendered"
+                    rendered += 1
+                    clip_durations_sec.append(clip_duration)
+                except subprocess.CalledProcessError as exc:
+                    row["status"] = f"failed:{exc.returncode}"
+                    failed += 1
+                    clip_duration = 0.0
+                except RuntimeError:
+                    row["status"] = "failed:missing_outputs"
+                    failed += 1
+                    clip_duration = 0.0
+
+                remaining = total_to_render - completed
+                avg_clip_time = (
+                    sum(clip_durations_sec) / len(clip_durations_sec) if clip_durations_sec else 0.0
+                )
+                eta_seconds = (avg_clip_time * remaining) / max_workers if remaining > 0 else 0.0
+                print(
+                    "[batch_render] progress "
+                    f"{completed}/{total_to_render} complete "
+                    f"(rendered={rendered}, failed={failed}, remaining={remaining}) "
+                    f"clip_time={_format_duration(clip_duration)} "
+                    f"eta={_format_duration(eta_seconds)}"
+                )
+                _write_manifest(manifest_path, list(rows_by_clip_id.values()))
+
+    _write_manifest(manifest_path, list(rows_by_clip_id.values()))
+    failed = [row for row in rows_by_clip_id.values() if row["status"].startswith("failed:")]
     print(f"[batch_render] wrote manifest: {manifest_path}")
+    if failed:
+        raise RuntimeError(f"{len(failed)} clip(s) failed; see manifest for details.")
 
 
 def _write_manifest(path: Path, rows: list[dict[str, str]]) -> None:
