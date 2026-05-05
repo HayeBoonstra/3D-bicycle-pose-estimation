@@ -1,6 +1,6 @@
 # Hand-authored Blender scenes that are allowed to enter dataset rendering.
 # Each .blend should already contain the chosen bicycle, rider, keypoints, and
-# MuJoCo-derived animation baked onto the armatures.
+# MuJoCo-derived animation baked onto the bicycle armatures.
 scenes:
   - id: docks_scene
     blend: "docks_scene.blend"
@@ -34,6 +34,24 @@ scenes:
     bike: Mountain bike
     rider: James
     frame_range: [0, 540]
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: quattro_canti_scene
+    blend: "quattro_canti_scene.blend"
+    bike: Swapfiets
+    rider: Josh
+    frame_range: [0, 190]
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: urban_street_scene
+    blend: "urban_street_scene.blend"
+    bike: Kids bike
+    rider: Louise
+    frame_range: [0, 190]
     camera_target: k_handlebar_middle
     weight: 1.0
     notes: "Hand-authored scene; update bike/rider/notes when finalized."

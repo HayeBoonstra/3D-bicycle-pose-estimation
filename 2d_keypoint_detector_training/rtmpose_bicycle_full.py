@@ -141,24 +141,24 @@ metainfo = dict(
     skeleton_info={},
     joint_weights=[1.0] * len(keypoint_names),
     sigmas = [
-    0.03,  # bottom_bracket
-    0.05,  # seat_stay
-    0.07,  # saddle
-    0.05,  # upper_head_tube
-    0.04,  # lower_head_tube
-    0.05,  # handlebar_left
-    0.03,  # handlebar_middle
-    0.05,  # handlebar_right
-    0.03,  # front_hub_left
-    0.03,  # front_hub_right
+    0.01,  # bottom_bracket
+    0.02,  # seat_stay
+    0.03,  # saddle
+    0.02,  # upper_head_tube
+    0.02,  # lower_head_tube
+    0.02,  # handlebar_left
+    0.02,  # handlebar_middle
+    0.02,  # handlebar_right
+    0.02,  # front_hub_left
+    0.02,  # front_hub_right
     0.03,  # front_wheel_back
     0.03,  # front_wheel_front
     0.03,  # front_wheel_ground
-    0.03,  # rear_hub_left
-    0.03,  # rear_hub_right
+    0.02,  # rear_hub_left
+    0.02,  # rear_hub_right
     0.03,  # rear_wheel_ground
-    0.05,  # left_pedal
-    0.05   # right_pedal
+    0.03,  # left_pedal
+    0.03   # right_pedal
 ],
 )
 

@@ -181,8 +181,14 @@ data.qvel[0] = target_velocity
 # circular_path = np.linspace(0, 2 * np.pi, 2000)
 # angle_array = np.rad2deg(circular_path)
 
-straight_path = np.zeros(2000)
-angle_array = straight_path
+# straight_path = np.zeros(2000)
+# angle_array = straight_path
+
+## hard right_turn path
+hard_right_turn_path = np.linspace(0, -180, 400)
+hard_right_turn_path = np.concatenate((hard_right_turn_path, np.full(250, -180)))
+
+angle_array = hard_right_turn_path
 
 next_display_time = time.perf_counter()
 next_physics_time = time.perf_counter()
