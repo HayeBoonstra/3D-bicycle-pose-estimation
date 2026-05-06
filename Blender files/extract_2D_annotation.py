@@ -18,6 +18,7 @@ from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPO
 
 COLLECTION_NAME = "Keypoints"
 BICYCLE_MESH_COLLECTION = os.environ.get("BICYCLE_BBOX_COLLECTION", "Bicycle")
+PROP_OCCLUDER_COLLECTION = os.environ.get("KEYPOINT_OCCLUDER_COLLECTION", "props")
 DEFAULT_CLIP_ID = "interactive_clip"
 
 
@@ -93,7 +94,24 @@ def _camera_extrinsics(cam):
     }
 
 
+def _world_background_strength(scene):
+    world = scene.world
+    if world is None or world.node_tree is None:
+        return None
+    nodes = world.node_tree.nodes
+    for node in nodes:
+        if node.bl_idname == "ShaderNodeBackground":
+            strength = node.inputs.get("Strength")
+            if strength is not None:
+                return float(strength.default_value)
+    return None
+
+
 def _metadata_from_env(scene, clip_id, output_dir):
+    lighting_strength = os.environ.get("LIGHTING_STRENGTH")
+    if lighting_strength in {None, ""}:
+        world_strength = _world_background_strength(scene)
+        lighting_strength = "" if world_strength is None else f"{world_strength:.6f}"
     return {
         "clip_id": clip_id,
         "scene_id": os.environ.get("SCENE_ID", ""),
@@ -105,6 +123,8 @@ def _metadata_from_env(scene, clip_id, output_dir):
         "frame_end": int(scene.frame_end),
         "camera_seed": os.environ.get("CAMERA_SEED", ""),
         "camera_target": os.environ.get("CAMERA_TARGET", "k_handlebar_middle"),
+        "lighting_seed": os.environ.get("LIGHTING_SEED", ""),
+        "lighting_strength": lighting_strength,
         "output_dir": str(output_dir),
     }
 
@@ -118,6 +138,35 @@ def _keypoint_objects(collection):
         if canonical_name in BICYCLE_KEYPOINT_NAMES:
             objects[canonical_name] = obj
     return objects
+
+
+def _occluder_meshes(collection_name):
+    collection = bpy.data.collections.get(collection_name)
+    if collection is None:
+        return []
+    return [obj for obj in collection.all_objects if obj.type == "MESH"]
+
+
+def _occluded_by_props(scene, depsgraph, cam_location, world_point, occluders):
+    if not occluders:
+        return False
+
+    direction = world_point - cam_location
+    distance = direction.length
+    if distance <= 1e-6:
+        return False
+    direction.normalize()
+
+    hit, _loc, _normal, _face, hit_obj, _matrix = scene.ray_cast(
+        depsgraph,
+        cam_location,
+        direction,
+        distance=distance - 1e-4,
+    )
+    if not hit or hit_obj is None:
+        return False
+    occluder_names = {obj.name for obj in occluders}
+    return hit_obj.name in occluder_names
 
 
 def _gt_bbox_xywh_from_bicycle_meshes(scene, cam, depsgraph, width, height, collection_name):
@@ -179,6 +228,7 @@ def export_annotations():
 
     width, height = _render_size(scene)
     keypoint_objects = _keypoint_objects(kp_col)
+    occluder_objects = _occluder_meshes(PROP_OCCLUDER_COLLECTION)
     missing = sorted(set(BICYCLE_KEYPOINT_NAMES) - set(keypoint_objects))
     if missing and not quiet_mode:
         print(f"[annotation-export] Warning: missing keypoint empties: {missing}")
@@ -239,6 +289,8 @@ def export_annotations():
                             "z_cam": 0.0,
                             "in_front_of_camera": False,
                             "visible_in_frame": False,
+                            "occluded_by_prop": False,
+                            "v": 0,
                             "missing": True,
                         }
                     )
@@ -254,7 +306,16 @@ def export_annotations():
                 x_px = co_ndc.x * width
                 y_px = (1.0 - co_ndc.y) * height
                 in_front = co_ndc.z > 0.0
-                visible = in_front and (0.0 <= co_ndc.x <= 1.0) and (0.0 <= co_ndc.y <= 1.0)
+                in_frame = in_front and (0.0 <= co_ndc.x <= 1.0) and (0.0 <= co_ndc.y <= 1.0)
+                occluded_by_prop = in_frame and _occluded_by_props(
+                    scene, depsgraph, cam.matrix_world.translation, world_co, occluder_objects
+                )
+                if not in_frame:
+                    visibility = 0
+                elif occluded_by_prop:
+                    visibility = 1
+                else:
+                    visibility = 2
 
                 annotations["keypoints"].append(
                     {
@@ -263,7 +324,9 @@ def export_annotations():
                         "y": float(y_px),
                         "z_cam": float(co_ndc.z),
                         "in_front_of_camera": bool(in_front),
-                        "visible_in_frame": bool(visible),
+                        "visible_in_frame": bool(in_frame),
+                        "occluded_by_prop": bool(occluded_by_prop),
+                        "v": int(visibility),
                         "missing": False,
                     }
                 )

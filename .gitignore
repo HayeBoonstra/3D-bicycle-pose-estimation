@@ -58,6 +58,7 @@ Blender files/Characters/*
 Blender files/Scenes/*
 Blender files/Bicycles/*
 Blender files/Bicycles/*
+Blender files/Props/*
 !Blender files/Scenes/scenes.yaml
 
 # Generated datasets and renders

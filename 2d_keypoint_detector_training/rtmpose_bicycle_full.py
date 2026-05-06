@@ -41,7 +41,7 @@ param_scheduler = [
     ),
 ]
 
-auto_scale_lr = dict(base_batch_size=320)
+auto_scale_lr = dict(enable=True, base_batch_size=50)
 
 # Keypoint codec
 codec = dict(
@@ -194,7 +194,7 @@ train_pipeline_stage2 = [
 
 # Data loaders
 train_dataloader = dict(
-    batch_size=50,
+    batch_size=64,
     num_workers=12,
     persistent_workers=True,
     sampler=dict(type="DefaultSampler", shuffle=True),
@@ -210,7 +210,7 @@ train_dataloader = dict(
 )
 
 val_dataloader = dict(
-    batch_size=50,
+    batch_size=64,
     num_workers=6,
     persistent_workers=True,
     drop_last=False,
@@ -228,7 +228,7 @@ val_dataloader = dict(
 )
 
 test_dataloader = dict(
-    batch_size=50,
+    batch_size=64,
     num_workers=6,
     persistent_workers=True,
     drop_last=False,

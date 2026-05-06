@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 from pathlib import Path
 from typing import Iterable
 
@@ -57,6 +58,18 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--device", default="cuda:0", help="Inference device, e.g. cuda:0 or cpu.")
     parser.add_argument("--limit", type=int, default=None, help="Optional maximum number of images.")
+    parser.add_argument(
+        "--shuffle",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Randomize image order before applying --limit.",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="Optional random seed for reproducible shuffling.",
+    )
     parser.add_argument(
         "--draw-skeleton",
         action=argparse.BooleanOptionalAction,
@@ -124,6 +137,9 @@ def main() -> None:
     )
 
     image_paths = list(_iter_images(args.input))
+    if args.shuffle and len(image_paths) > 1:
+        rng = random.Random(args.seed)
+        rng.shuffle(image_paths)
     if args.limit is not None:
         image_paths = image_paths[: args.limit]
     if not image_paths:
