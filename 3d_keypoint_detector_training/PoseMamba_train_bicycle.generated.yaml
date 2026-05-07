@@ -4,7 +4,7 @@ finetune: false
 partial_train: null
 epochs: 40
 checkpoint_frequency: 10
-batch_size: 8
+batch_size: 80
 dropout: 0.0
 learning_rate: 0.0002
 weight_decay: 0.01

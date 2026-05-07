@@ -16,6 +16,7 @@ def _write_config(
     subset_name: str,
     clip_len: int,
     num_joints: int,
+    batch_size: int,
     gt_2d: bool,
     epochs: int,
     max_batches: int,
@@ -29,7 +30,7 @@ def _write_config(
         "partial_train": None,
         "epochs": epochs,
         "checkpoint_frequency": 10,
-        "batch_size": 8,
+        "batch_size": batch_size,
         "dropout": 0.0,
         "learning_rate": 2e-4,
         "weight_decay": 0.01,
@@ -87,6 +88,12 @@ def parse_args() -> argparse.Namespace:
         default=Path("3d_keypoint_detector_training/PoseMamba_train_bicycle.generated.yaml"),
     )
     parser.add_argument("--num-joints", type=int, default=18)
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=80,
+        help="Training/eval batch size written into PoseMamba config (increase to use more VRAM).",
+    )
     parser.add_argument("--gt-2d", action="store_true")
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--max-batches", type=int, default=0)
@@ -105,6 +112,7 @@ def main() -> None:
         subset_name=args.subset_name,
         clip_len=args.window_size,
         num_joints=args.num_joints,
+        batch_size=args.batch_size,
         gt_2d=args.gt_2d,
         epochs=args.epochs,
         max_batches=args.max_batches,
