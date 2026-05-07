@@ -94,6 +94,12 @@ def _camera_extrinsics(cam):
     }
 
 
+def _world_to_camera_point(cam, world_point):
+    world_to_camera = cam.matrix_world.inverted()
+    camera_point = world_to_camera @ world_point
+    return [float(camera_point.x), float(camera_point.y), float(camera_point.z)]
+
+
 def _world_background_strength(scene):
     world = scene.world
     if world is None or world.node_tree is None:
@@ -274,7 +280,20 @@ def export_annotations():
                 "scene_id": render_config["scene_id"],
                 "frame": frame,
                 "frame_index": frame - start_frame,
+                "timestamp_sec": float((frame - start_frame) / max(1, int(scene.render.fps))),
+                "fps": int(scene.render.fps),
+                "camera_name": cam.name,
+                "coord_frames": {
+                    "world": "blender_world_xyz_meters",
+                    "camera": "opencv_camera_xyz_meters",
+                },
+                "joint_names": list(BICYCLE_KEYPOINT_NAMES),
                 "kps_world": [],
+                "kps_camera": [],
+                "valid_3d": [],
+                "missing_mask": [],
+                "occluded_mask": [],
+                "in_front_mask": [],
                 "keypoints": [],
             }
 
@@ -295,13 +314,19 @@ def export_annotations():
                         }
                     )
                     keypoints_3d["keypoints"].append(
-                        {"name": keypoint_name, "world": None, "missing": True}
+                        {"name": keypoint_name, "world": None, "camera": None, "missing": True}
                     )
                     keypoints_3d["kps_world"].append(None)
+                    keypoints_3d["kps_camera"].append(None)
+                    keypoints_3d["valid_3d"].append(0)
+                    keypoints_3d["missing_mask"].append(1)
+                    keypoints_3d["occluded_mask"].append(0)
+                    keypoints_3d["in_front_mask"].append(0)
                     continue
 
                 obj_eval = obj.evaluated_get(depsgraph)
                 world_co = obj_eval.matrix_world.translation
+                camera_xyz = _world_to_camera_point(cam, world_co)
                 co_ndc = world_to_camera_view(scene, cam, world_co)
                 x_px = co_ndc.x * width
                 y_px = (1.0 - co_ndc.y) * height
@@ -334,10 +359,16 @@ def export_annotations():
                     {
                         "name": keypoint_name,
                         "world": _vector_to_list(world_co),
+                        "camera": camera_xyz,
                         "missing": False,
                     }
                 )
                 keypoints_3d["kps_world"].append(_vector_to_list(world_co))
+                keypoints_3d["kps_camera"].append(camera_xyz)
+                keypoints_3d["valid_3d"].append(1)
+                keypoints_3d["missing_mask"].append(0)
+                keypoints_3d["occluded_mask"].append(1 if occluded_by_prop else 0)
+                keypoints_3d["in_front_mask"].append(1 if in_front else 0)
 
             mesh_bbox = _gt_bbox_xywh_from_bicycle_meshes(
                 scene, cam, depsgraph, width, height, BICYCLE_MESH_COLLECTION
@@ -350,6 +381,17 @@ def export_annotations():
             output_file = annotation_dir / f"keypoints_2d_frame_{frame:04d}.json"
             with output_file.open("w", encoding="utf-8") as f:
                 json.dump(annotations, f, indent=2)
+            if not (
+                len(keypoints_3d["joint_names"])
+                == len(keypoints_3d["kps_world"])
+                == len(keypoints_3d["kps_camera"])
+                == len(keypoints_3d["valid_3d"])
+                == len(keypoints_3d["missing_mask"])
+                == len(keypoints_3d["occluded_mask"])
+                == len(keypoints_3d["in_front_mask"])
+                == len(BICYCLE_KEYPOINT_NAMES)
+            ):
+                raise RuntimeError("3D keypoint export alignment mismatch.")
             jsonl.write(json.dumps(keypoints_3d) + "\n")
             frame_idx = frame - start_frame + 1
             progress = (

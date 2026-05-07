@@ -7,8 +7,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from pipeline.preprocess_roi import crop_and_resize
-from pipeline.schema import NUM_KEYPOINTS
+from keypoint_detector_pipeline.preprocess_roi import crop_and_resize
+from keypoint_detector_pipeline.schema import NUM_KEYPOINTS
 
 
 class MMPose2DInferencer:

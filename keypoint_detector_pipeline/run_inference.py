@@ -11,13 +11,13 @@ import numpy as np
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from pipeline.detect_rfdetr import run_detection
-from pipeline.io_utils import dump_json, iter_jsonl, load_json, write_jsonl
-from pipeline.lift3d_ssm import TemporalSSMLifter
-from pipeline.pose2d_mmpose import MMPose2DInferencer
-from pipeline.schema import NUM_KEYPOINTS
-from pipeline.sequence_builder import build_temporal_windows, rows_to_arrays
-from pipeline.world_transform import camera_from_json, camera_to_world, reprojection_rmse
+from keypoint_detector_pipeline.detect_rfdetr import run_detection
+from keypoint_detector_pipeline.io_utils import dump_json, iter_jsonl, load_json, write_jsonl
+from keypoint_detector_pipeline.lift3d_ssm import TemporalSSMLifter
+from keypoint_detector_pipeline.pose2d_mmpose import MMPose2DInferencer
+from keypoint_detector_pipeline.schema import NUM_KEYPOINTS
+from keypoint_detector_pipeline.sequence_builder import build_temporal_windows, rows_to_arrays
+from keypoint_detector_pipeline.world_transform import camera_from_json, camera_to_world, reprojection_rmse
 
 
 def _parse_args() -> argparse.Namespace:
@@ -30,6 +30,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--mmpose-model", default="rtmpose-l_8xb256-420e_coco-256x192")
     parser.add_argument("--mmpose-weights", default=None)
     parser.add_argument("--lifter-weights", type=Path, default=None)
+    parser.add_argument("--lifter-config", type=Path, default=None)
     parser.add_argument("--window-size", type=int, default=27)
     return parser.parse_args()
 
@@ -72,7 +73,11 @@ def main() -> None:
     points_2d, conf_2d, bboxes = rows_to_arrays(rows_2d)
     windows, conf_windows = build_temporal_windows(points_2d, conf_2d, bboxes, window_size=args.window_size)
 
-    lifter = TemporalSSMLifter(num_keypoints=NUM_KEYPOINTS)
+    lifter = TemporalSSMLifter(
+        num_keypoints=NUM_KEYPOINTS,
+        window_size=args.window_size,
+        config_path=args.lifter_config,
+    )
     lifter.load_weights(args.lifter_weights)
     kps3d_camera = lifter.infer(windows, conf_windows)
 

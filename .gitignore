@@ -68,6 +68,7 @@ data/bicycle_pose_dataset/metadata/
 data/bicycle_pose_dataset/videos/
 data/bicycle_pose_dataset/overlays/
 data/bicycle_pose_dataset/splits.json
+data/*
 
 # Logs and local data
 *.log

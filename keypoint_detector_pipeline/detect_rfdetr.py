@@ -8,7 +8,7 @@ from typing import Iterable
 
 from PIL import Image
 
-from pipeline.io_utils import write_jsonl
+from keypoint_detector_pipeline.io_utils import write_jsonl
 
 
 def _set_inference_env() -> None:

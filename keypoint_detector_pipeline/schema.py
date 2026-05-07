@@ -6,7 +6,7 @@ import importlib.util
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_PATH = REPO_ROOT / "data generation pipeline tools" / "bicycle_keypoint_schema.py"
+SCHEMA_PATH = REPO_ROOT / "data_generation_pipeline_tools" / "bicycle_keypoint_schema.py"
 
 _FALLBACK_KEYPOINTS = [
     "k_bottom_bracket",

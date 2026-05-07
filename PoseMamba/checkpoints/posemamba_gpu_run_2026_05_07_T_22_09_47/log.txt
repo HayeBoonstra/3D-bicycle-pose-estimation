@@ -1,0 +1,114 @@
+[92m05-07 16:09:47[0m {'train_2d': False, 'no_eval': False, 'finetune': False, 'partial_train': None, 'epochs': 40, 'checkpoint_frequency': 10, 'batch_size': 8, 'dropout': 0.0, 'learning_rate': 0.0002, 'weight_decay': 0.01, 'lr_decay': 0.99, 'backbone': 'PoseMamba', 'maxlen': 27, 'dim_feat': 64, 'mlp_ratio': 2, 'depth': 8, 'att_fuse': True, 'data_root': '/home/hayepc/3D-bicycle-pose-estimation/data/posemamba_sequences/PoseMamba_f27s100', 'subset_list': ['BICYCLE'], 'dt_file': 'unused_for_bicycle.pkl', 'clip_len': 27, 'data_stride': 9, 'rootrel': True, 'sample_stride': 1, 'num_joints': 18, 'no_conf': True, 'gt_2d': True, 'lambda_3d_velocity': 20.0, 'lambda_scale': 0.5, 'lambda_lv': 0.0, 'lambda_lg': 0.0, 'lambda_a': 0.0, 'lambda_av': 0.0, 'lambda_3dw': 0.0, 'lambda_3d': 1.0, 'lambda_diff': 0.5, 'synthetic': True, 'flip': False, 'mask_ratio': 0.0, 'mask_T_ratio': 0.0, 'noise': False, 'max_batches': 0, 'max_eval_batches': 0, 'name': 'PoseMamba_train_bicycle.generated'}
+[92m05-07 16:09:47[0m Number of GPUs found:1
+[92m05-07 16:09:47[0m Loading dataset...
+[92m05-07 16:09:47[0m INFO: Trainable parameter count:1165891
+[92m05-07 16:09:48[0m INFO: Training on 875(3D) batches
+[92m05-07 16:09:48[0m Training epoch 0.
+[92m05-07 16:10:26[0m INFO: Testing
+[92m05-07 16:10:29[0m 188
+[92m05-07 16:10:29[0m Protocol #1 Error (MPJPE):0.181208997964859
+[92m05-07 16:10:29[0m Protocol #2 Error (P-MPJPE):0.12792377173900604
+[92m05-07 16:10:29[0m [1] time 0.63 lr 0.000200 3d_train 0.330750 e1 0.181209 e2 0.127924
+[92m05-07 16:10:29[0m Remaining training time: 0:27:16.150480
+[92m05-07 16:10:29[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:10:29[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:10:29[0m Training epoch 1.
+[92m05-07 16:11:05[0m INFO: Testing
+[92m05-07 16:11:08[0m 188
+[92m05-07 16:11:08[0m Protocol #1 Error (MPJPE):0.11163280159235
+[92m05-07 16:11:08[0m Protocol #2 Error (P-MPJPE):0.08069702237844467
+[92m05-07 16:11:08[0m [2] time 0.61 lr 0.000198 3d_train 0.183662 e1 0.111633 e2 0.080697
+[92m05-07 16:11:08[0m Remaining training time: 0:25:23.639793
+[92m05-07 16:11:08[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:11:08[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:11:08[0m Training epoch 2.
+[92m05-07 16:11:45[0m INFO: Testing
+[92m05-07 16:11:47[0m 188
+[92m05-07 16:11:47[0m Protocol #1 Error (MPJPE):0.08167219907045364
+[92m05-07 16:11:47[0m Protocol #2 Error (P-MPJPE):0.05974553897976875
+[92m05-07 16:11:47[0m [3] time 0.61 lr 0.000196 3d_train 0.132340 e1 0.081672 e2 0.059746
+[92m05-07 16:11:47[0m Remaining training time: 0:24:52.081134
+[92m05-07 16:11:47[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:11:47[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:11:47[0m Training epoch 3.
+[92m05-07 16:12:24[0m INFO: Testing
+[92m05-07 16:12:26[0m 188
+[92m05-07 16:12:27[0m Protocol #1 Error (MPJPE):0.06047988682985306
+[92m05-07 16:12:27[0m Protocol #2 Error (P-MPJPE):0.04798775911331177
+[92m05-07 16:12:27[0m [4] time 0.61 lr 0.000194 3d_train 0.102095 e1 0.060480 e2 0.047988
+[92m05-07 16:12:27[0m Remaining training time: 0:24:09.850032
+[92m05-07 16:12:27[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:12:27[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:12:27[0m Training epoch 4.
+[92m05-07 16:13:03[0m INFO: Testing
+[92m05-07 16:13:06[0m 188
+[92m05-07 16:13:06[0m Protocol #1 Error (MPJPE):0.06015754118561745
+[92m05-07 16:13:06[0m Protocol #2 Error (P-MPJPE):0.04275805503129959
+[92m05-07 16:13:06[0m [5] time 0.61 lr 0.000192 3d_train 0.083012 e1 0.060158 e2 0.042758
+[92m05-07 16:13:06[0m Remaining training time: 0:23:34.037232
+[92m05-07 16:13:06[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:13:06[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:13:06[0m Training epoch 5.
+[92m05-07 16:13:43[0m INFO: Testing
+[92m05-07 16:13:45[0m 188
+[92m05-07 16:13:45[0m Protocol #1 Error (MPJPE):0.04822712019085884
+[92m05-07 16:13:45[0m Protocol #2 Error (P-MPJPE):0.03536380082368851
+[92m05-07 16:13:45[0m [6] time 0.61 lr 0.000190 3d_train 0.070860 e1 0.048227 e2 0.035364
+[92m05-07 16:13:45[0m Remaining training time: 0:22:53.598800
+[92m05-07 16:13:45[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:13:45[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:13:45[0m Training epoch 6.
+[92m05-07 16:14:22[0m INFO: Testing
+[92m05-07 16:14:24[0m 188
+[92m05-07 16:14:25[0m Protocol #1 Error (MPJPE):0.037367839366197586
+[92m05-07 16:14:25[0m Protocol #2 Error (P-MPJPE):0.02982444129884243
+[92m05-07 16:14:25[0m [7] time 0.61 lr 0.000188 3d_train 0.063137 e1 0.037368 e2 0.029824
+[92m05-07 16:14:25[0m Remaining training time: 0:22:14.515402
+[92m05-07 16:14:25[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:14:25[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:14:25[0m Training epoch 7.
+[92m05-07 16:15:02[0m INFO: Testing
+[92m05-07 16:15:04[0m 188
+[92m05-07 16:15:04[0m Protocol #1 Error (MPJPE):0.03478638455271721
+[92m05-07 16:15:04[0m Protocol #2 Error (P-MPJPE):0.028359942138195038
+[92m05-07 16:15:04[0m [8] time 0.61 lr 0.000186 3d_train 0.056730 e1 0.034786 e2 0.028360
+[92m05-07 16:15:04[0m Remaining training time: 0:21:40.628835
+[92m05-07 16:15:04[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:15:04[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:15:04[0m Training epoch 8.
+[92m05-07 16:15:41[0m INFO: Testing
+[92m05-07 16:15:44[0m 188
+[92m05-07 16:15:44[0m Protocol #1 Error (MPJPE):0.03370048478245735
+[92m05-07 16:15:44[0m Protocol #2 Error (P-MPJPE):0.026714280247688293
+[92m05-07 16:15:44[0m [9] time 0.62 lr 0.000185 3d_train 0.052580 e1 0.033700 e2 0.026714
+[92m05-07 16:15:44[0m Remaining training time: 0:21:10.340128
+[92m05-07 16:15:44[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:15:44[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:15:44[0m Training epoch 9.
+[92m05-07 16:16:21[0m INFO: Testing
+[92m05-07 16:16:24[0m 188
+[92m05-07 16:16:24[0m Protocol #1 Error (MPJPE):0.030671024695038795
+[92m05-07 16:16:24[0m Protocol #2 Error (P-MPJPE):0.02366829663515091
+[92m05-07 16:16:24[0m [10] time 0.62 lr 0.000183 3d_train 0.048667 e1 0.030671 e2 0.023668
+[92m05-07 16:16:24[0m Remaining training time: 0:20:29.470292
+[92m05-07 16:16:24[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:16:24[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/epoch_9.bin
+[92m05-07 16:16:24[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:16:24[0m Training epoch 10.
+[92m05-07 16:17:02[0m INFO: Testing
+[92m05-07 16:17:04[0m 188
+[92m05-07 16:17:04[0m Protocol #1 Error (MPJPE):0.0314735546708107
+[92m05-07 16:17:04[0m Protocol #2 Error (P-MPJPE):0.024433858692646027
+[92m05-07 16:17:04[0m [11] time 0.63 lr 0.000181 3d_train 0.045934 e1 0.031474 e2 0.024434
+[92m05-07 16:17:04[0m Remaining training time: 0:20:18.754470
+[92m05-07 16:17:04[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:17:05[0m Training epoch 11.
+[92m05-07 16:17:43[0m INFO: Testing
+[92m05-07 16:17:45[0m 188
+[92m05-07 16:17:46[0m Protocol #1 Error (MPJPE):0.026844583451747894
+[92m05-07 16:17:46[0m Protocol #2 Error (P-MPJPE):0.021344386041164398
+[92m05-07 16:17:46[0m [12] time 0.64 lr 0.000179 3d_train 0.043973 e1 0.026845 e2 0.021344
+[92m05-07 16:17:46[0m Remaining training time: 0:19:50.752876
+[92m05-07 16:17:46[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/latest_epoch.bin
+[92m05-07 16:17:46[0m Saving checkpoint tocheckpoints/posemamba_gpu_run_2026_05_07_T_22_09_47/best_epoch.bin
+[92m05-07 16:17:46[0m Training epoch 12.

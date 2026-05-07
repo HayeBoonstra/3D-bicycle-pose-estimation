@@ -1,2 +1,2 @@
-"""Temporal 3D lifter training utilities."""
+"""Utilities for preparing, training, and evaluating 3D keypoint lifters."""
 
