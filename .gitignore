@@ -31,10 +31,6 @@ env/
 test-env/
 win-env/
 ENV/
-<<<<<<< HEAD
-.venv/*
-=======
->>>>>>> initial-inference-pipeline-setup
 .venv-mmpose/
 .venv-mmpose311/
 
@@ -61,10 +57,6 @@ Blender files/Textures/*
 Blender files/Characters/*
 Blender files/Scenes/*
 Blender files/Bicycles/*
-<<<<<<< HEAD
-=======
-Blender files/Bicycles/*
->>>>>>> initial-inference-pipeline-setup
 Blender files/Props/*
 !Blender files/Scenes/scenes.yaml
 
@@ -76,6 +68,7 @@ data/bicycle_pose_dataset/metadata/
 data/bicycle_pose_dataset/videos/
 data/bicycle_pose_dataset/overlays/
 data/bicycle_pose_dataset/splits.json
+
 # Logs and local data
 *.log
 MUJOCO_LOG.TXT
@@ -83,10 +76,6 @@ MUJOCO_LOG.TXT
 *.csv
 raw_renders/*
 training_outputs/*
-<<<<<<< HEAD
-=======
-
->>>>>>> initial-inference-pipeline-setup
 
 # OS
 .DS_Store
