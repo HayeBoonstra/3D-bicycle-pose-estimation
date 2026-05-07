@@ -10,11 +10,23 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from bicycle_keypoint_schema import (
-    BICYCLE_KEYPOINT_NAMES,
-    CATEGORY_ID,
-    coco_category,
-)
+
+try:
+    # Works when invoked as a module from repo root:
+    # python -m data_generation_pipeline_tools.convert_to_coco
+    from data_generation_pipeline_tools.bicycle_keypoint_schema import (
+        BICYCLE_KEYPOINT_NAMES,
+        CATEGORY_ID,
+        coco_category,
+    )
+except ModuleNotFoundError:
+    # Works when invoked directly as a script:
+    # python data_generation_pipeline_tools/convert_to_coco.py
+    from bicycle_keypoint_schema import (  # type: ignore
+        BICYCLE_KEYPOINT_NAMES,
+        CATEGORY_ID,
+        coco_category,
+    )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RAW_RENDERS_DIR = REPO_ROOT / "raw_renders"
@@ -96,7 +108,8 @@ def _flatten_keypoints(annotation: dict[str, Any], outside_policy: str) -> tuple
     return flattened, num_keypoints
 
 
-def _bbox_from_keypoints(flattened: list[float], width: int, height: int) -> list[float]:
+def _tight_bbox_xy_range_from_keypoints(flattened: list[float], width: int, height: int) -> tuple[float, float, float, float] | None:
+    """Min/max x/y from labeled keypoints (same visibility rules as COCO flattening)."""
     visible_xy: list[tuple[float, float]] = []
     labeled_xy: list[tuple[float, float]] = []
     for idx in range(0, len(flattened), 3):
@@ -108,12 +121,40 @@ def _bbox_from_keypoints(flattened: list[float], width: int, height: int) -> lis
 
     xy = visible_xy or labeled_xy
     if not xy:
-        return [0.0, 0.0, 1.0, 1.0]
+        return None
 
     xs = [min(max(x, 0.0), float(width - 1)) for x, _ in xy]
     ys = [min(max(y, 0.0), float(height - 1)) for _, y in xy]
-    x_min, x_max = min(xs), max(xs)
-    y_min, y_max = min(ys), max(ys)
+    return min(xs), max(xs), min(ys), max(ys)
+
+
+def _tight_bbox_xy_range_from_gt(frame_annotation: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    """Blender-exported mesh bbox in pixel space: [x, y, w, h] (may extend outside the image)."""
+    raw = frame_annotation.get("gt_bbox_xywh")
+    if not isinstance(raw, list) or len(raw) != 4:
+        return None
+    try:
+        x, y, w, h = (float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3]))
+    except (TypeError, ValueError):
+        return None
+    if w <= 0.0 or h <= 0.0:
+        return None
+    return x, x + w, y, y + h
+
+
+def _union_xy_ranges(
+    a: tuple[float, float, float, float] | None, b: tuple[float, float, float, float] | None
+) -> tuple[float, float, float, float] | None:
+    if a is None:
+        return b
+    if b is None:
+        return a
+    ax0, ax1, ay0, ay1 = a
+    bx0, bx1, by0, by1 = b
+    return min(ax0, bx0), max(ax1, bx1), min(ay0, by0), max(ay1, by1)
+
+
+def _finalize_bbox_with_margin(x_min: float, x_max: float, y_min: float, y_max: float, width: int, height: int) -> list[float]:
     bbox_w = max(1.0, x_max - x_min)
     bbox_h = max(1.0, y_max - y_min)
     margin_x = bbox_w * 0.1
@@ -123,6 +164,17 @@ def _bbox_from_keypoints(flattened: list[float], width: int, height: int) -> lis
     x_max = min(float(width - 1), x_max + margin_x)
     y_max = min(float(height - 1), y_max + margin_y)
     return [x_min, y_min, max(1.0, x_max - x_min), max(1.0, y_max - y_min)]
+
+
+def _bbox_for_annotation(frame_annotation: dict[str, Any], flattened: list[float], width: int, height: int) -> list[float]:
+    """COCO bbox: union of Blender mesh GT (if present) and keypoint tight box, then 10% margin."""
+    kp_range = _tight_bbox_xy_range_from_keypoints(flattened, width, height)
+    mesh_range = _tight_bbox_xy_range_from_gt(frame_annotation)
+    merged = _union_xy_ranges(kp_range, mesh_range)
+    if merged is None:
+        return [0.0, 0.0, 1.0, 1.0]
+    x_min, x_max, y_min, y_max = merged
+    return _finalize_bbox_with_margin(x_min, x_max, y_min, y_max, width, height)
 
 
 def _copy_metadata(clip_dir: Path, dataset_dir: Path, clip_id: str) -> None:
@@ -172,7 +224,7 @@ def _build_split_coco(
             _copy_or_link(src_frame, dst_frame, link=link)
 
             keypoints, num_keypoints = _flatten_keypoints(frame_annotation, outside_policy)
-            bbox = _bbox_from_keypoints(keypoints, width, height)
+            bbox = _bbox_for_annotation(frame_annotation, keypoints, width, height)
             images.append(
                 {
                     "id": image_id,

@@ -17,7 +17,6 @@ def set_exr_world_background(exr_path: str, strength: float = 1.0) -> None:
         scene.world = bpy.data.worlds.new("World")
 
     world = scene.world
-    world.use_nodes = True
     node_tree = world.node_tree
     nodes = node_tree.nodes
     links = node_tree.links

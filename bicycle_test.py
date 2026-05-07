@@ -135,10 +135,12 @@ parser.add_argument("--plotting", dest="plotting", action="store_true", help="En
 parser.set_defaults(plotting=False)
 parser.add_argument("--viewer", dest="viewer", action="store_true", help="Enable viewer")
 parser.set_defaults(viewer=False)
+parser.add_argument("--filename", type=str, default="transform_data", help="Name of the output csv file")
 args = parser.parse_args()
 launch_options = {
     "plotting": args.plotting,
-    "viewer": args.viewer
+    "viewer": args.viewer,
+    "filename": args.filename
 }
 
 world = World()
@@ -167,16 +169,27 @@ def update_camera(viewer, data):
 i = 0
 target_velocity = 15 / 3.6
 data.qvel[0] = target_velocity
-angle_array = np.concatenate((
-    np.zeros(100),
-    np.linspace(0,90, 400),
-    np.linspace(90, -90, 800),
-    np.linspace(-90, 0, 400),
-    np.zeros(100)
-))
+# zigzag_path = np.concatenate((
+#     np.zeros(100),
+#     np.linspace(0,90, 400),
+#     np.linspace(90, -90, 800),
+#     np.linspace(-90, 0, 400),
+#     np.zeros(100)
+# ))
+# angle_array = zigzag_path
 
 # circular_path = np.linspace(0, 2 * np.pi, 2000)
 # angle_array = np.rad2deg(circular_path)
+
+# straight_path = np.zeros(2000)
+# angle_array = straight_path
+
+## hard right_turn path
+hard_right_turn_path = np.linspace(0, -180, 400)
+hard_right_turn_path = np.concatenate((hard_right_turn_path, np.full(250, -180)))
+
+angle_array = hard_right_turn_path
+
 next_display_time = time.perf_counter()
 next_physics_time = time.perf_counter()
 push_impulse = 20 # Ns
@@ -438,7 +451,7 @@ else:
 
 
 transform_data = resize_transform_data(transform_data, DISPLAY_HZ)
-save_transform_data_csv(transform_data, f"transform_data_{DISPLAY_HZ}hz.csv")
+save_transform_data_csv(transform_data, f"{launch_options['filename']}_{DISPLAY_HZ}hz.csv")
 if launch_options["plotting"]:
     plt.subplot(2, 1, 1)
     plt.plot(plot_data["time"], plot_data["desired_yaw_angle"], label="Desired Yaw Angle")

@@ -13,6 +13,7 @@ blender --background "Blender files/Scenes/mountain bike.blend" \
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import runpy
 import shutil
@@ -25,6 +26,8 @@ import bpy
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BLENDER_FILES_DIR = REPO_ROOT / "Blender files"
 RANDOMIZE_CAMERA_SCRIPT = BLENDER_FILES_DIR / "randomize_camera.py"
+RANDOMIZE_LIGHTING_SCRIPT = BLENDER_FILES_DIR / "randomize_lighting_strength.py"
+RANDOMIZE_FOG_SCRIPT = BLENDER_FILES_DIR / "randomize_fog.py"
 EXPORT_SCRIPT = BLENDER_FILES_DIR / "extract_2D_annotation.py"
 
 
@@ -58,6 +61,12 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--encode-video", action="store_true")
     parser.add_argument("--fps", type=int)
+    parser.add_argument(
+        "--quiet-mode",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Suppress non-essential render logs (use --no-quiet-mode to enable).",
+    )
     return parser.parse_args(_argv_after_double_dash())
 
 
@@ -87,11 +96,69 @@ def _configure_scene(args: argparse.Namespace, output_dir: Path) -> None:
     scene.render.filepath = str(frames_dir / "frame_")
 
 
-def _run_blender_script(path: Path) -> None:
+def _run_blender_script(path: Path, quiet_mode: bool) -> None:
     if not path.exists():
         raise FileNotFoundError(path)
-    print(f"[render_clip] running {path}")
+    if not quiet_mode:
+        print(f"[render_clip] running {path}")
     runpy.run_path(str(path), run_name="__main__")
+
+
+@contextlib.contextmanager
+def _silence_stdout_stderr():
+    """Temporarily silence noisy Blender C-level render logs."""
+    stdout_fd = sys.stdout.fileno()
+    stderr_fd = sys.stderr.fileno()
+    saved_stdout = os.dup(stdout_fd)
+    saved_stderr = os.dup(stderr_fd)
+    try:
+        with open(os.devnull, "w", encoding="utf-8") as devnull:
+            os.dup2(devnull.fileno(), stdout_fd)
+            os.dup2(devnull.fileno(), stderr_fd)
+            yield saved_stdout
+    finally:
+        os.dup2(saved_stdout, stdout_fd)
+        os.dup2(saved_stderr, stderr_fd)
+        os.close(saved_stdout)
+        os.close(saved_stderr)
+
+
+@contextlib.contextmanager
+def _render_progress(scene, output_fd: int) -> None:
+    """Print one in-place progress line while Blender renders animation frames."""
+    frame_start = int(scene.frame_start)
+    frame_end = int(scene.frame_end)
+    total_frames = max(1, frame_end - frame_start + 1)
+    state = {"last_frame": None, "printed": False}
+
+    def _write(message: str) -> None:
+        try:
+            os.write(output_fd, message.encode("utf-8", errors="replace"))
+        except OSError:
+            # If the output stream is gone, avoid crashing the render.
+            pass
+
+    def _on_render_write(_scene, _depsgraph):
+        current_frame = int(_scene.frame_current)
+        if state["last_frame"] == current_frame:
+            return
+        state["last_frame"] = current_frame
+        done = max(0, min(total_frames, current_frame - frame_start + 1))
+        if not args.quiet_mode:
+            _write(
+                f"\r[render_clip] rendering frame {done}/{total_frames} "
+                f"(scene frame {current_frame})"
+            )
+        state["printed"] = True
+
+    bpy.app.handlers.render_write.append(_on_render_write)
+    try:
+        yield
+    finally:
+        if _on_render_write in bpy.app.handlers.render_write:
+            bpy.app.handlers.render_write.remove(_on_render_write)
+        if state["printed"]:
+            _write("\n")
 
 
 def _synchronize_frame_window(args: argparse.Namespace) -> None:
@@ -126,13 +193,14 @@ def _synchronize_frame_window(args: argparse.Namespace) -> None:
 
     scene.frame_start = int(start)
     scene.frame_end = int(end)
-    print(
-        "[render_clip] synchronized frame window around sampled frame "
-        f"{sample_frame}: {scene.frame_start}-{scene.frame_end} (n={window})"
-    )
+    if not args.quiet_mode:
+        print(
+            "[render_clip] synchronized frame window around sampled frame "
+            f"{sample_frame}: {scene.frame_start}-{scene.frame_end} (n={window})"
+        )
 
 
-def _encode_mp4(output_dir: Path, clip_id: str, fps: int, frame_start: int) -> None:
+def _encode_mp4(output_dir: Path, clip_id: str, fps: int, frame_start: int, quiet_mode: bool) -> None:
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg is None:
         raise RuntimeError("ffmpeg is not installed or not found in PATH.")
@@ -154,7 +222,8 @@ def _encode_mp4(output_dir: Path, clip_id: str, fps: int, frame_start: int) -> N
         str(output_video),
     ]
     subprocess.run(cmd, check=True)
-    print(f"[render_clip] wrote {output_video}")
+    if not quiet_mode:
+        print(f"[render_clip] wrote {output_video}")
 
 
 def main() -> None:
@@ -165,18 +234,33 @@ def main() -> None:
     _configure_scene(args, output_dir)
 
     scene = bpy.context.scene
-    print(
-        f"[render_clip] clip={args.clip_id} scene={args.scene_id} "
-        f"frames={scene.frame_start}-{scene.frame_end} camera_seed={args.camera_seed}"
-    )
+    if not args.quiet_mode:
+        print(
+            f"[render_clip] clip={args.clip_id} scene={args.scene_id} "
+            f"frames={scene.frame_start}-{scene.frame_end} camera_seed={args.camera_seed}"
+        )
 
-    _run_blender_script(RANDOMIZE_CAMERA_SCRIPT)
+    _run_blender_script(RANDOMIZE_CAMERA_SCRIPT, args.quiet_mode)
+    _run_blender_script(RANDOMIZE_LIGHTING_SCRIPT, args.quiet_mode)
+    _run_blender_script(RANDOMIZE_FOG_SCRIPT, args.quiet_mode)
     _synchronize_frame_window(args)
-    bpy.ops.render.render(animation=True)
-    _run_blender_script(EXPORT_SCRIPT)
+    if not args.quiet_mode:
+        print("[render_clip] rendering frames...")
+    with _silence_stdout_stderr() as terminal_fd:
+        with _render_progress(scene, terminal_fd):
+            bpy.ops.render.render(animation=True)
+    if not args.quiet_mode:
+        print("[render_clip] rendering complete")
+    _run_blender_script(EXPORT_SCRIPT, args.quiet_mode)
 
     if args.encode_video:
-        _encode_mp4(output_dir, args.clip_id, int(scene.render.fps), int(scene.frame_start))
+        _encode_mp4(
+            output_dir,
+            args.clip_id,
+            int(scene.render.fps),
+            int(scene.frame_start),
+            args.quiet_mode,
+        )
 
 
 if __name__ == "__main__":

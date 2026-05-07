@@ -177,26 +177,26 @@ for part_name in names:
 ## place the keypoints on the bicycle for pose estimation and foot alignment
 # Each tuple follows the convention: (parent bone name, keypoint object name).
 keypoints = [
-    ("b_root", "bottom_bracket"),
-    ("b_root", "seat_stay"),
-    ("b_root", "rear_hub_left"),
-    ("b_root", "rear_hub_right"),
-    ("b_root", "rear_wheel_ground"),
-    ("b_root", "upper_head_tube"),
-    ("b_root", "lower_head_tube"),
-    ("b_root", "saddle"),
-    ("b_left_pedal", "left_pedal"),
-    ("b_left_pedal", "left_pedal_tracker"),
-    ("b_right_pedal", "right_pedal"),
-    ("b_right_pedal", "right_pedal_tracker"),
-    ("b_steer", "handlebar_middle"),
-    ("b_steer", "handlebar_left"),
-    ("b_steer", "handlebar_right"),
-    ("b_steer", "front_hub_left"),
-    ("b_steer", "front_hub_right"),
-    ("b_steer", "front_wheel_back"),
-    ("b_steer", "front_wheel_front"),
-    ("b_steer", "front_wheel_ground"),
+    ("b_root", "k_bottom_bracket"),
+    ("b_root", "k_seat_stay"),
+    ("b_root", "k_rear_hub_left"),
+    ("b_root", "k_rear_hub_right"),
+    ("b_root", "k_rear_wheel_ground"),
+    ("b_root", "k_upper_head_tube"),
+    ("b_root", "k_lower_head_tube"),
+    ("b_root", "k_saddle"),
+    ("b_left_pedal", "k_left_pedal"),
+    ("b_left_pedal", "k_left_pedal_tracker"),
+    ("b_right_pedal", "k_right_pedal"),
+    ("b_right_pedal", "k_right_pedal_tracker"),
+    ("b_steer", "k_handlebar_middle"),
+    ("b_steer", "k_handlebar_left"),
+    ("b_steer", "k_handlebar_right"),
+    ("b_steer", "k_front_hub_left"),
+    ("b_steer", "k_front_hub_right"),
+    ("b_steer", "k_front_wheel_back"),
+    ("b_steer", "k_front_wheel_front"),
+    ("b_steer", "k_front_wheel_ground"),
 ]
 
 keypoints_collection = bpy.data.collections.get("Keypoints")
@@ -233,26 +233,26 @@ for parent_bone_name, keypoint_name in keypoints:
 # however, we can get quite close by using the bounding boxes!
 
 keypoints_locations = [
-    ("bottom_bracket", "crank"),
-    ("seat_stay", "seat"),
-    ("rear_hub_left", "rear_wheel"),
-    ("rear_hub_right", "rear_wheel"),
-    ("rear_wheel_ground", "rear_wheel"),
-    ("upper_head_tube", "steer"),
-    ("lower_head_tube", "frame"),
-    ("saddle", "seat"),
-    ("left_pedal", "left_pedal"),
-    ("left_pedal_tracker", "left_pedal"),
-    ("right_pedal", "right_pedal"),
-    ("right_pedal_tracker", "right_pedal"),
-    ("handle_bar_middle", "steer"),
-    ("handle_bar_left", "steer"),
-    ("handle_bar_right", "steer"),
-    ("front_hub_left", "front_wheel"),
-    ("front_hub_right", "front_wheel"),
-    ("front_wheel_back", "front_wheel"),
-    ("front_wheel_front", "front_wheel"),
-    ("front_wheel_ground", "front_wheel"),
+    ("k_bottom_bracket", "crank"),
+    ("k_seat_stay", "seat"),
+    ("k_rear_hub_left", "rear_wheel"),
+    ("k_rear_hub_right", "rear_wheel"),
+    ("k_rear_wheel_ground", "rear_wheel"),
+    ("k_upper_head_tube", "steer"),
+    ("k_lower_head_tube", "frame"),
+    ("k_saddle", "seat"),
+    ("k_left_pedal", "left_pedal"),
+    ("k_left_pedal_tracker", "left_pedal"),
+    ("k_right_pedal", "right_pedal"),
+    ("k_right_pedal_tracker", "right_pedal"),
+    ("k_handlebar_middle", "steer"),
+    ("k_handlebar_left", "steer"),
+    ("k_handlebar_right", "steer"),
+    ("k_front_hub_left", "front_wheel"),
+    ("k_front_hub_right", "front_wheel"),
+    ("k_front_wheel_back", "front_wheel"),
+    ("k_front_wheel_front", "front_wheel"),
+    ("k_front_wheel_ground", "front_wheel"),
 ]
 
 for keypoint_name, parent_object_name in keypoints_locations:
@@ -280,27 +280,27 @@ for keypoint_name, parent_object_name in keypoints_locations:
     location = parent_obj.matrix_world.translation.copy()
 
     # nasty elif statements for the 
-    if keypoint_name in {"rear_hub_left", "front_hub_left"}:
+    if keypoint_name in {"k_rear_hub_left", "k_front_hub_left"}:
         location = bbox_center - y_axis * half_width
-    elif keypoint_name in {"rear_hub_right", "front_hub_right"}:
+    elif keypoint_name in {"k_rear_hub_right", "k_front_hub_right"}:
         location = bbox_center + y_axis * half_width
-    elif keypoint_name in {"rear_wheel_ground", "front_wheel_ground"}:
+    elif keypoint_name in {"k_rear_wheel_ground", "k_front_wheel_ground"}:
         location = bbox_center - z_axis * half_height
-    elif keypoint_name == "front_wheel_back":
+    elif keypoint_name == "k_front_wheel_back":
         location = bbox_center - x_axis * half_length
-    elif keypoint_name == "front_wheel_front":
+    elif keypoint_name == "k_front_wheel_front":
         location = bbox_center + x_axis * half_length
-    elif keypoint_name == "upper_head_tube":
+    elif keypoint_name == "k_upper_head_tube":
         location = bbox_center - z_axis * half_height
-    elif keypoint_name == "lower_head_tube":
+    elif keypoint_name == "k_lower_head_tube":
         location = bbox_center + x_axis * half_length
-    elif keypoint_name == "handle_bar_left":
+    elif keypoint_name == "k_handlebar_left":
         location = bbox_center - y_axis * half_width
-    elif keypoint_name == "handle_bar_right":
+    elif keypoint_name == "k_handlebar_right":
         location = bbox_center + y_axis * half_width
-    elif keypoint_name == "handle_bar_middle":
+    elif keypoint_name == "k_handlebar_middle":
         location = bbox_center + z_axis * min(half_height * 0.25, 0.05)
-    elif keypoint_name in {"left_pedal_tracker", "right_pedal_tracker"}:
+    elif keypoint_name in {"k_left_pedal_tracker", "k_right_pedal_tracker"}:
         location = parent_obj.matrix_world.translation + z_axis * min(max(half_height, 0.03), 0.08)
 
     keypoint_obj.matrix_world.translation = location

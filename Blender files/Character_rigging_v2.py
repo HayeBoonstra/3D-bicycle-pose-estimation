@@ -395,8 +395,6 @@ calibrate_pole_angle_from_bent_pose(
 ## add the IK constraint for the feet but don´t fill them yet
 left_foot_ik = get_or_create_ik_constraint(left_ankle_pbone)
 right_foot_ik = get_or_create_ik_constraint(right_ankle_pbone)
-left_foot_ik.target = armature_object
-right_foot_ik.target = armature_object
 left_foot_ik.chain_count = 1
 right_foot_ik.chain_count = 1
 

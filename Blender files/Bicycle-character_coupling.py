@@ -95,7 +95,7 @@ character_hip_bone_name = resolve_mixamo_bone_name(character, "Hips")
 character_hip_bone = character.pose.bones[character_hip_bone_name]
 
 # move the character's hip bone to the bicycle's saddle keypoint
-saddle_point = bpy.data.collections[KEYPOINTS_COLLECTION_NAME].objects["saddle"].matrix_world.translation.copy()
+saddle_point = bpy.data.collections[KEYPOINTS_COLLECTION_NAME].objects["k_saddle"].matrix_world.translation.copy()
 saddle_point.z += hip_z_offset
 
 character_hip_bone_world_position = (character.matrix_world @ character_hip_bone.matrix).translation

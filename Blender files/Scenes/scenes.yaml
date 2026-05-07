@@ -1,21 +1,57 @@
 # Hand-authored Blender scenes that are allowed to enter dataset rendering.
 # Each .blend should already contain the chosen bicycle, rider, keypoints, and
-# MuJoCo-derived animation baked onto the armatures.
+# MuJoCo-derived animation baked onto the bicycle armatures.
 scenes:
   - id: docks_scene
     blend: "docks_scene.blend"
     bike: kids bike
     rider: KachujinS
-    frame_range: [0, 200]
+    frame_range: [0, 540]
     camera_target: k_handlebar_middle
     weight: 1.0
     notes: "Hand-authored scene; update bike/rider/notes when finalized."
 
-  - id: Tree_lined_scene
-    blend: "Tree_lined_scene.blend"
+  - id: tree_lined_scene
+    blend: "tree_lined_scene.blend"
     bike: gentlemen bike
     rider: Sophie
-    frame_range: [0, 200]
+    frame_range: [0, 600]
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: evening_street_scene
+    blend: "evening_street_scene.blend"
+    bike: Swapfiets
+    rider: Josh
+    frame_range: [0, 600]
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: german_outskirts_scene
+    blend: "german_outskirts_scene.blend"
+    bike: Mountain bike
+    rider: James
+    frame_range: [0, 540]
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: quattro_canti_scene
+    blend: "quattro_canti_scene.blend"
+    bike: Swapfiets
+    rider: Josh
+    frame_range: [0, 190]
+    camera_target: k_handlebar_middle
+    weight: 1.0
+    notes: "Hand-authored scene; update bike/rider/notes when finalized."
+
+  - id: urban_street_scene
+    blend: "urban_street_scene.blend"
+    bike: Kids bike
+    rider: Louise
+    frame_range: [0, 190]
     camera_target: k_handlebar_middle
     weight: 1.0
     notes: "Hand-authored scene; update bike/rider/notes when finalized."
