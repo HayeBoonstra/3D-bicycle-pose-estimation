@@ -31,6 +31,9 @@ env/
 test-env/
 win-env/
 ENV/
+.venv/*
+.venv-mmpose/
+.venv-mmpose311/
 
 # IDE / editor
 .idea/
@@ -55,7 +58,7 @@ Blender files/Textures/*
 Blender files/Characters/*
 Blender files/Scenes/*
 Blender files/Bicycles/*
-Blender files/Bicycles/*
+Blender files/Props/*
 !Blender files/Scenes/scenes.yaml
 
 # Generated datasets and renders
@@ -72,6 +75,7 @@ MUJOCO_LOG.TXT
 *.log.*
 *.csv
 raw_renders/*
+training_outputs/*
 
 # OS
 .DS_Store
