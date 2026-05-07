@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
@@ -22,19 +23,24 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    cmd = [
-        "conda",
-        "run",
-        "-n",
-        args.conda_env,
-        "python",
-        "train.py",
-        "--config",
-        str(args.config),
-        "--evaluate",
-        str(args.checkpoint),
-    ]
-    subprocess.run(cmd, check=True, cwd=args.posemamba_root)
+    in_target_env = os.environ.get("CONDA_DEFAULT_ENV") == args.conda_env
+    cmd = []
+    if not in_target_env:
+        cmd.extend(["conda", "run", "-n", args.conda_env])
+    cmd.extend(
+        [
+            "python",
+            "train.py",
+            "--config",
+            str(args.config.resolve()),
+            "--evaluate",
+            str(args.checkpoint.resolve()),
+        ]
+    )
+    env = os.environ.copy()
+    for name in ("_PYTHON_SYSCONFIGDATA_NAME", "CC", "CXX", "CUDAHOSTCXX"):
+        env.pop(name, None)
+    subprocess.run(cmd, check=True, cwd=args.posemamba_root, env=env)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,51 @@
+[92m05-07 16:36:25[0m {'train_2d': False, 'no_eval': False, 'finetune': False, 'partial_train': None, 'epochs': 40, 'checkpoint_frequency': 10, 'batch_size': 8, 'dropout': 0.0, 'learning_rate': 0.0002, 'weight_decay': 0.01, 'lr_decay': 0.99, 'backbone': 'PoseMamba', 'maxlen': 27, 'dim_feat': 64, 'mlp_ratio': 2, 'depth': 8, 'att_fuse': True, 'data_root': '/home/hayepc/3D-bicycle-pose-estimation/data/posemamba_sequences/PoseMamba_f27s100', 'subset_list': ['BICYCLE'], 'dt_file': 'unused_for_bicycle.pkl', 'clip_len': 27, 'data_stride': 9, 'rootrel': True, 'sample_stride': 1, 'num_joints': 18, 'no_conf': True, 'gt_2d': True, 'lambda_3d_velocity': 20.0, 'lambda_scale': 0.5, 'lambda_lv': 0.0, 'lambda_lg': 0.0, 'lambda_a': 0.0, 'lambda_av': 0.0, 'lambda_3dw': 0.0, 'lambda_3d': 1.0, 'lambda_diff': 0.5, 'synthetic': True, 'flip': False, 'mask_ratio': 0.0, 'mask_T_ratio': 0.0, 'noise': False, 'max_batches': 0, 'max_eval_batches': 0, 'name': 'PoseMamba_train_bicycle.generated'}
+[92m05-07 16:36:25[0m Number of GPUs found:1
+[92m05-07 16:36:25[0m Loading dataset...
+[92m05-07 16:36:25[0m INFO: Trainable parameter count:1165891
+[92m05-07 16:36:26[0m INFO: Training on 875(3D) batches
+[92m05-07 16:36:26[0m Training epoch 0.
+[92m05-07 16:37:13[0m INFO: Testing
+[92m05-07 16:37:16[0m 188
+[92m05-07 16:37:17[0m Protocol #1 Error (MPJPE):0.181208997964859
+[92m05-07 16:37:17[0m Protocol #2 Error (P-MPJPE):0.12792377173900604
+[92m05-07 16:37:17[0m [1] time 0.77 lr 0.000200 3d_train 0.330750 e1 0.181209 e2 0.127924
+[92m05-07 16:37:17[0m Remaining training time: 0:33:29.673560
+[92m05-07 16:37:17[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/latest_epoch.bin
+[92m05-07 16:37:17[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/best_epoch.bin
+[92m05-07 16:37:17[0m Training epoch 1.
+[92m05-07 16:38:01[0m INFO: Testing
+[92m05-07 16:38:03[0m 188
+[92m05-07 16:38:03[0m Protocol #1 Error (MPJPE):0.11163280159235
+[92m05-07 16:38:03[0m Protocol #2 Error (P-MPJPE):0.08069702237844467
+[92m05-07 16:38:03[0m [2] time 0.74 lr 0.000198 3d_train 0.183662 e1 0.111633 e2 0.080697
+[92m05-07 16:38:03[0m Remaining training time: 0:30:27.704073
+[92m05-07 16:38:03[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/latest_epoch.bin
+[92m05-07 16:38:04[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/best_epoch.bin
+[92m05-07 16:38:04[0m Training epoch 2.
+[92m05-07 16:38:44[0m INFO: Testing
+[92m05-07 16:38:47[0m 188
+[92m05-07 16:38:47[0m Protocol #1 Error (MPJPE):0.08167219907045364
+[92m05-07 16:38:47[0m Protocol #2 Error (P-MPJPE):0.05974553897976875
+[92m05-07 16:38:47[0m [3] time 0.67 lr 0.000196 3d_train 0.132340 e1 0.081672 e2 0.059746
+[92m05-07 16:38:47[0m Remaining training time: 0:27:22.985214
+[92m05-07 16:38:47[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/latest_epoch.bin
+[92m05-07 16:38:47[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/best_epoch.bin
+[92m05-07 16:38:47[0m Training epoch 3.
+[92m05-07 16:39:27[0m INFO: Testing
+[92m05-07 16:39:30[0m 188
+[92m05-07 16:39:30[0m Protocol #1 Error (MPJPE):0.06047988682985306
+[92m05-07 16:39:30[0m Protocol #2 Error (P-MPJPE):0.04798775911331177
+[92m05-07 16:39:30[0m [4] time 0.67 lr 0.000194 3d_train 0.102095 e1 0.060480 e2 0.047988
+[92m05-07 16:39:30[0m Remaining training time: 0:26:29.035411
+[92m05-07 16:39:30[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/latest_epoch.bin
+[92m05-07 16:39:30[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/best_epoch.bin
+[92m05-07 16:39:30[0m Training epoch 4.
+[92m05-07 16:40:08[0m INFO: Testing
+[92m05-07 16:40:10[0m 188
+[92m05-07 16:40:10[0m Protocol #1 Error (MPJPE):0.06015754118561745
+[92m05-07 16:40:10[0m Protocol #2 Error (P-MPJPE):0.04275805503129959
+[92m05-07 16:40:10[0m [5] time 0.63 lr 0.000192 3d_train 0.083012 e1 0.060158 e2 0.042758
+[92m05-07 16:40:10[0m Remaining training time: 0:24:12.647376
+[92m05-07 16:40:10[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/latest_epoch.bin
+[92m05-07 16:40:10[0m Saving checkpoint to/home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run_2026_05_07_T_22_36_25/best_epoch.bin
+[92m05-07 16:40:10[0m Training epoch 5.

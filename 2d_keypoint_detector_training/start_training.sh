@@ -1,3 +1,7 @@
+unset _PYTHON_SYSCONFIGDATA_NAME
+unset CC
+unset CXX
+unset CUDAHOSTCXX
 source /home/hayepc/3D-bicycle-pose-estimation/.venv-mmpose311/bin/activate
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 python /home/hayepc/3D-bicycle-pose-estimation/.venv-mmpose311/lib/python3.11/site-packages/mmpose/.mim/tools/train.py \

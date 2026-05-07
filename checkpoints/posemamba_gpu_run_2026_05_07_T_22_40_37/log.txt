@@ -1,0 +1,6 @@
+[92m05-07 16:40:37[0m {'train_2d': False, 'no_eval': False, 'finetune': False, 'partial_train': None, 'epochs': 40, 'checkpoint_frequency': 10, 'batch_size': 8, 'dropout': 0.0, 'learning_rate': 0.0002, 'weight_decay': 0.01, 'lr_decay': 0.99, 'backbone': 'PoseMamba', 'maxlen': 27, 'dim_feat': 64, 'mlp_ratio': 2, 'depth': 8, 'att_fuse': True, 'data_root': '/home/hayepc/3D-bicycle-pose-estimation/data/posemamba_sequences/PoseMamba_f27s100', 'subset_list': ['BICYCLE'], 'dt_file': 'unused_for_bicycle.pkl', 'clip_len': 27, 'data_stride': 9, 'rootrel': True, 'sample_stride': 1, 'num_joints': 18, 'no_conf': True, 'gt_2d': True, 'lambda_3d_velocity': 20.0, 'lambda_scale': 0.5, 'lambda_lv': 0.0, 'lambda_lg': 0.0, 'lambda_a': 0.0, 'lambda_av': 0.0, 'lambda_3dw': 0.0, 'lambda_3d': 1.0, 'lambda_diff': 0.5, 'synthetic': True, 'flip': False, 'mask_ratio': 0.0, 'mask_T_ratio': 0.0, 'noise': False, 'max_batches': 0, 'max_eval_batches': 0, 'name': 'PoseMamba_train_bicycle.generated'}
+[92m05-07 16:40:37[0m Number of GPUs found:1
+[92m05-07 16:40:37[0m Loading dataset...
+[92m05-07 16:40:37[0m INFO: Trainable parameter count:1165891
+[92m05-07 16:40:37[0m INFO: Training on 875(3D) batches
+[92m05-07 16:40:37[0m Training epoch 0.

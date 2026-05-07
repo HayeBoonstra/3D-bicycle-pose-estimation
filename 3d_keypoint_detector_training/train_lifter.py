@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
@@ -111,20 +112,26 @@ def main() -> None:
         max_eval_batches=args.max_eval_batches,
     )
 
-    args.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        "conda",
-        "run",
-        "-n",
-        args.conda_env,
-        "python",
-        "train.py",
-        "--config",
-        str(config_path),
-        "--checkpoint",
-        str(args.checkpoint_dir),
-    ]
-    subprocess.run(cmd, check=True, cwd=args.posemamba_root)
+    checkpoint_dir = args.checkpoint_dir.resolve()
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    in_target_env = os.environ.get("CONDA_DEFAULT_ENV") == args.conda_env
+    cmd = []
+    if not in_target_env:
+        cmd.extend(["conda", "run", "-n", args.conda_env])
+    cmd.extend(
+        [
+            "python",
+            "train.py",
+            "--config",
+            str(config_path),
+            "--checkpoint",
+            str(checkpoint_dir),
+        ]
+    )
+    env = os.environ.copy()
+    for name in ("_PYTHON_SYSCONFIGDATA_NAME", "CC", "CXX", "CUDAHOSTCXX"):
+        env.pop(name, None)
+    subprocess.run(cmd, check=True, cwd=args.posemamba_root, env=env)
 
 
 if __name__ == "__main__":
