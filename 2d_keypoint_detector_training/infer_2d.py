@@ -5,8 +5,24 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import sys
 from pathlib import Path
 from typing import Iterable
+
+try:
+    from data_generation_pipeline_tools.bicycle_keypoint_schema import (
+        BICYCLE_KEYPOINT_NAMES,
+        BICYCLE_SKELETON_NAMES,
+    )
+except ModuleNotFoundError:
+    # Support direct script execution from subdirectories by adding repo root.
+    repo_root = Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from data_generation_pipeline_tools.bicycle_keypoint_schema import (
+        BICYCLE_KEYPOINT_NAMES,
+        BICYCLE_SKELETON_NAMES,
+    )
 
 
 def _to_jsonable(value):
@@ -76,6 +92,12 @@ def _parse_args() -> argparse.Namespace:
         default=True,
         help="Draw skeleton links on output visualization images.",
     )
+    parser.add_argument(
+        "--use-bicycle-skeleton",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Override visualizer skeleton links with bicycle keypoint schema.",
+    )
     return parser.parse_args()
 
 
@@ -115,6 +137,35 @@ def _rename_inferencer_outputs(
         src_pred.rename(dst_pred)
 
 
+def _set_bicycle_skeleton(inferencer) -> bool:
+    """Inject the shared bicycle skeleton metadata into MMPose visualizer."""
+    visualizer = None
+    if hasattr(inferencer, "inferencer"):
+        visualizer = getattr(inferencer.inferencer, "visualizer", None)
+    if visualizer is None:
+        visualizer = getattr(inferencer, "visualizer", None)
+    if visualizer is None:
+        return False
+
+    dataset_meta = dict(getattr(visualizer, "dataset_meta", {}) or {})
+    keypoint_index = {name: idx for idx, name in enumerate(BICYCLE_KEYPOINT_NAMES)}
+    skeleton_links = [
+        (keypoint_index[start], keypoint_index[end]) for start, end in BICYCLE_SKELETON_NAMES
+    ]
+    dataset_meta["keypoint_names"] = list(BICYCLE_KEYPOINT_NAMES)
+    dataset_meta["skeleton_links"] = skeleton_links
+    # Keep color arrays in sync with metadata lengths expected by visualizer.
+    dataset_meta["keypoint_colors"] = [(255, 0, 0)] * len(BICYCLE_KEYPOINT_NAMES)
+    dataset_meta["skeleton_link_colors"] = [(0, 255, 0)] * len(skeleton_links)
+    dataset_meta["link_color"] = dataset_meta["skeleton_link_colors"]
+    dataset_meta["point_color"] = dataset_meta["keypoint_colors"]
+    if hasattr(visualizer, "set_dataset_meta"):
+        visualizer.set_dataset_meta(dataset_meta, skeleton_style="mmpose")
+    else:
+        visualizer.dataset_meta = dataset_meta
+    return True
+
+
 def main() -> None:
     args = _parse_args()
     if not args.config.exists():
@@ -135,6 +186,8 @@ def main() -> None:
         pose2d_weights=str(args.checkpoint),
         device=args.device,
     )
+    if args.use_bicycle_skeleton and not _set_bicycle_skeleton(inferencer):
+        print("Warning: could not access visualizer to apply bicycle skeleton.")
 
     image_paths = list(_iter_images(args.input))
     if args.shuffle and len(image_paths) > 1:
