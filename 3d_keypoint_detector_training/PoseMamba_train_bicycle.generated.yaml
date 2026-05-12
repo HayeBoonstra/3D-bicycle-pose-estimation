@@ -4,7 +4,7 @@ finetune: false
 partial_train: null
 epochs: 40
 checkpoint_frequency: 10
-batch_size: 80
+batch_size: 64
 dropout: 0.0
 learning_rate: 0.0002
 weight_decay: 0.01
@@ -13,9 +13,9 @@ backbone: PoseMamba
 maxlen: 27
 dim_feat: 64
 mlp_ratio: 2
-depth: 8
+depth: 10
 att_fuse: true
-data_root: /home/hayepc/3D-bicycle-pose-estimation/data/posemamba_sequences/PoseMamba_f27s100
+data_root: /home/hayepc/3D-bicycle-pose-estimation/data/posemamba_training_sequences/PoseMamba_f27s1
 subset_list:
 - BICYCLE
 dt_file: unused_for_bicycle.pkl
@@ -26,6 +26,7 @@ sample_stride: 1
 num_joints: 18
 no_conf: true
 gt_2d: true
+eval_snap_xy_to_input: false
 lambda_3d_velocity: 20.0
 lambda_scale: 0.5
 lambda_lv: 0.0
@@ -35,7 +36,7 @@ lambda_av: 0.0
 lambda_3dw: 0.0
 lambda_3d: 1.0
 lambda_diff: 0.5
-synthetic: true
+synthetic: false
 flip: false
 mask_ratio: 0.0
 mask_T_ratio: 0.0

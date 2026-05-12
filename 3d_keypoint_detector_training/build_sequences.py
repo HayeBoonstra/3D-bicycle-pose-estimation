@@ -201,14 +201,20 @@ def _window_clip(clip: ClipData, window_size: int, stride: int) -> list[dict]:
 
 
 def _split_clip_ids(clip_ids: list[str], val_ratio: float, test_ratio: float, seed: int) -> dict[str, set[str]]:
+    if val_ratio < 0 or test_ratio < 0:
+        raise ValueError("val_ratio and test_ratio must be non-negative")
     if val_ratio + test_ratio >= 1.0:
         raise ValueError("val_ratio + test_ratio must be < 1.0")
     rng = random.Random(seed)
-    ids = list(clip_ids)
+    # Split over unique clip IDs so each logical clip lands in exactly one split.
+    ids = list(dict.fromkeys(clip_ids))
     rng.shuffle(ids)
     n = len(ids)
-    n_test = int(round(n * test_ratio))
-    n_val = int(round(n * val_ratio))
+    # Floor counts so train absorbs rounding remainder (~80/10/10 for default ratios).
+    n_test = int(n * test_ratio)
+    n_val = int(n * val_ratio)
+    if n_test + n_val > n:
+        n_val = max(0, n - n_test)
     test_ids = set(ids[:n_test])
     val_ids = set(ids[n_test : n_test + n_val])
     train_ids = set(ids[n_test + n_val :])
@@ -268,12 +274,20 @@ def build_sequences(args: argparse.Namespace) -> None:
 
     posemamba_subset = out_root / f"PoseMamba_f{args.window_size}s{args.stride}" / "BICYCLE"
     _write_posemamba_split(split_samples["train"], posemamba_subset / "train", use_confidence=args.use_confidence)
-    _write_posemamba_split(split_samples["val"], posemamba_subset / "test", use_confidence=args.use_confidence)
+    _write_posemamba_split(split_samples["val"], posemamba_subset / "val", use_confidence=args.use_confidence)
+    _write_posemamba_split(split_samples["test"], posemamba_subset / "test", use_confidence=args.use_confidence)
 
+    split_clip_counts = {k: len(v) for k, v in split_map.items()}
     meta = {
         "joint_names": BICYCLE_KEYPOINT_NAMES,
         "window_size": args.window_size,
         "stride": args.stride,
+        "split_ratios": {
+            "val": args.val_ratio,
+            "test": args.test_ratio,
+            "train_implied": max(0.0, 1.0 - args.val_ratio - args.test_ratio),
+        },
+        "split_clip_counts": split_clip_counts,
         "splits": {k: sorted(list(v)) for k, v in split_map.items()},
         "normalization": "bbox_center_scale",
         "coord_frame_target": "camera",
@@ -307,8 +321,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--window-size", type=int, default=27)
     parser.add_argument("--stride", type=int, default=1)
     parser.add_argument("--seed", type=int, default=7)
-    parser.add_argument("--val-ratio", type=float, default=0.15)
-    parser.add_argument("--test-ratio", type=float, default=0.15)
+    parser.add_argument("--val-ratio", type=float, default=0.1)
+    parser.add_argument("--test-ratio", type=float, default=0.1)
     parser.add_argument("--use-confidence", action="store_true")
     parser.add_argument("--qa-only", action="store_true")
     return parser.parse_args()

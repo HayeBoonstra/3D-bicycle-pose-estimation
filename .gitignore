@@ -62,6 +62,9 @@ Blender files/Props/*
 
 # Generated datasets and renders
 raw_renders/
+raw_mujoco_direct*/
+bicycle.xml
+world.xml
 data/bicycle_pose_dataset/annotations/
 data/bicycle_pose_dataset/images/
 data/bicycle_pose_dataset/metadata/

@@ -7,13 +7,16 @@ unset CC
 unset CXX
 unset CUDAHOSTCXX
 
+BATCH_SIZE="${BATCH_SIZE:-64}"
+
 RUN_ARGS=(
   /home/hayepc/3D-bicycle-pose-estimation/3d_keypoint_detector_training/train_lifter.py
   --conda-env posemamba
   --posemamba-root /home/hayepc/3D-bicycle-pose-estimation/PoseMamba
-  --sequence-root /home/hayepc/3D-bicycle-pose-estimation/data/posemamba_sequences
+  --sequence-root /home/hayepc/3D-bicycle-pose-estimation/data/posemamba_training_sequences
   --window-size 27
-  --stride 100
+  --stride 1
+  --batch-size "${BATCH_SIZE}"
   --checkpoint-dir /home/hayepc/3D-bicycle-pose-estimation/checkpoints/posemamba_gpu_run
   --gt-2d
   --epochs 40

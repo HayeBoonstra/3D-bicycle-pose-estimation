@@ -56,10 +56,9 @@ class Bicycle:
 
     def create_bicycle_model(self):
         ## create the mujoco XML file
-        wheel_xml = f"""
-        <asset>
-            <mesh name="wheel_torus" builtin="supertorus" params="64 0.04 1 1" scale="0.35 0.35 0.35"/>
-        </asset>
+        radius = self.wheel_size / 2
+        wheel_xml = """
+        <asset/>
         """
 
         actuator_xml = """
@@ -89,11 +88,18 @@ class Bicycle:
             <body name="bicycle" pos="0 0 0.35">
                 <freejoint name="bicycle_free"/>
                 <body name="frame" pos="0 0 0">
+                    <site name="k_bottom_bracket" type="sphere" size="0.01" pos="{self.bottom_bracket[0]} {self.bottom_bracket[1]} {self.bottom_bracket[2]}"/>
+                    <site name="k_seat_stay" type="sphere" size="0.01" pos="{self.seat_stay_attachment[0]} {self.seat_stay_attachment[1]} {self.seat_stay_attachment[2]}"/>
+                    <site name="k_lower_head_tube" type="sphere" size="0.01" pos="{self.head_tube[0]} {self.head_tube[1]} {self.head_tube[2]}"/>
+                    <site name="k_rear_hub_left" type="sphere" size="0.01" pos="{self.rear_hub[0]} {self.rear_hub[1] - self.wheel_clearance} {self.rear_hub[2]}"/>
+                    <site name="k_rear_hub_right" type="sphere" size="0.01" pos="{self.rear_hub[0]} {self.rear_hub[1] + self.wheel_clearance} {self.rear_hub[2]}"/>
+                    <site name="k_rear_wheel_ground" type="sphere" size="0.01" pos="{self.rear_hub[0]} {self.rear_hub[1]} {self.rear_hub[2] - radius}"/>
                     <geom name="seat tube" type="capsule" fromto="{self.bottom_bracket[0]} {self.bottom_bracket[1]} {self.bottom_bracket[2]}  {self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}" size="0.016"/>
                     <geom name="seat post" type="capsule" fromto="{self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}  {self.seat_tube_post[0]} {self.seat_tube_post[1]} {self.seat_tube_post[2]}" size="0.016"/>
                     <body name="seat" pos="{self.seat_tube_post[0]} {self.seat_tube_post[1]} {self.seat_tube_post[2]}">
                         <geom name="seat" type="box" size="{self.seat_length} {self.seat_width} {self.seat_thickness}"/>
                         <site name="seat_site" type="sphere" size="0.01" pos="0 0 0"/>
+                        <site name="k_saddle" type="sphere" size="0.01" pos="0 0 0"/>
                     </body>
                     <geom name="down tube" type="capsule" fromto="{self.bottom_bracket[0]} {self.bottom_bracket[1]} {self.bottom_bracket[2]}  {self.head_tube[0]} {self.head_tube[1]} {self.head_tube[2]}" size="0.016"/>
                     <geom name="top tube" type="capsule" fromto="{self.head_tube[0]} {self.head_tube[1]} {self.head_tube[2]}  {self.seat_tube[0]} {self.seat_tube[1]} {self.seat_tube[2]}" size="0.016"/>
@@ -103,20 +109,27 @@ class Bicycle:
                     <geom name="seat stay right" type="capsule" fromto="{self.rear_hub[0]} {self.rear_hub[1]+self.wheel_clearance} {self.rear_hub[2]}  {self.seat_stay_attachment[0]} {self.seat_stay_attachment[1]} {self.seat_stay_attachment[2]}" size="0.016"/>
                     <body name="rear wheel" pos="{self.rear_hub[0]} {self.rear_hub[1]} {self.rear_hub[2]}" euler="90 0 0">
                         <joint name="rear wheel hinge" type="hinge" axis="0 0 -1" pos="0 0 0" limited="false"/>
-                        <geom name="rear wheel contact" type="cylinder" size="{self.wheel_size/2} {self.wheel_width/2}" rgba="0.1 0.1 0.1 0" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
-                        <geom name="rear wheel geom" type="mesh" mesh="wheel_torus" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
+                        <geom name="rear wheel contact" type="cylinder" size="{self.wheel_size/2} {self.wheel_width/2}" rgba="0.1 0.1 0.1 1" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
                     </body>
                 </body>
                 <body name="front fork" pos="{self.front_hub[0]} {self.front_hub[1]} {self.front_hub[2]}" euler="0 {np.rad2deg(self.fork_angle)} 0">
                     <joint name="steer" type="hinge" axis="0 0 1" pos="0 0 0" range="-35 35"/>
+                    <site name="k_front_hub_left" type="sphere" size="0.01" pos="0 {-self.wheel_clearance} 0"/>
+                    <site name="k_front_hub_right" type="sphere" size="0.01" pos="0 {self.wheel_clearance} 0"/>
+                    <site name="k_front_wheel_back" type="sphere" size="0.01" pos="{-radius * np.cos(self.fork_angle)} 0 {-radius * np.sin(self.fork_angle)}"/>
+                    <site name="k_front_wheel_front" type="sphere" size="0.01" pos="{radius * np.cos(self.fork_angle)} 0 {radius * np.sin(self.fork_angle)}"/>
+                    <site name="k_front_wheel_ground" type="sphere" size="0.01" pos="{radius * np.sin(self.fork_angle)} 0 {-radius * np.cos(self.fork_angle)}"/>
+                    <site name="k_upper_head_tube" type="sphere" size="0.01" pos="0 0 {self.fork_length + self.handlebar_height}"/>
+                    <site name="k_handlebar_left" type="sphere" size="0.01" pos="0 {-self.handlebar_width/2} {self.fork_length + self.handlebar_height}"/>
+                    <site name="k_handlebar_middle" type="sphere" size="0.01" pos="0 0 {self.fork_length + self.handlebar_height}"/>
+                    <site name="k_handlebar_right" type="sphere" size="0.01" pos="0 {self.handlebar_width/2} {self.fork_length + self.handlebar_height}"/>
                     <geom name="head tube" type="capsule" fromto="0 0 {self.fork_length} 0 0 {self.fork_length + self.handlebar_height}" size="0.016"/>
                     <geom name="handlebar" type="capsule" fromto="0 {-self.handlebar_width/2} {self.fork_length + self.handlebar_height} 0 {self.handlebar_width/2} {self.fork_length + self.handlebar_height}" size="0.016"/>
                     <geom name="fork left" type="capsule" fromto="0 {-self.wheel_clearance} 0 0 {-self.wheel_clearance} {self.fork_length}" size="0.016"/>
                     <geom name="fork right" type="capsule" fromto="0 {self.wheel_clearance} 0 0 {self.wheel_clearance} {self.fork_length}" size="0.016"/>
                     <body name="front wheel" pos="0 0 0" euler="90 0 0">
                         <joint name="front wheel hinge" type="hinge" axis="0 0 -1" pos="0 0 0" limited="false"/>
-                        <geom name="front wheel contact" type="cylinder" size="{self.wheel_size/2} {self.wheel_width/2}" rgba="0.1 0.1 0.1 0" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
-                        <geom name="front wheel geom" type="mesh" mesh="wheel_torus" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
+                        <geom name="front wheel contact" type="cylinder" size="{self.wheel_size/2} {self.wheel_width/2}" rgba="0.1 0.1 0.1 1" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
                     </body>
                 </body>
                 <body name="pedals" pos="0 0 0">
@@ -126,10 +139,12 @@ class Bicycle:
                     <body name="left_pedal" pos="0 {-self.crank_width - self.pedal_width/2 - 4*0.016} {-self.crank_length}" euler="180 0 0">
                         <joint name="left_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="left_pedal" type="box" size="{self.pedal_width} {self.pedal_length} {0.01}"/>
+                        <site name="k_left_pedal" type="sphere" size="0.01" pos="0 0 0"/>
                     </body>
                     <body name="right_pedal" pos="0 {self.crank_width + self.pedal_width/2 + 4*0.016} {self.crank_length}">
                         <joint name="right_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="right_pedal" type="box" size="{self.pedal_width} {self.pedal_length} {0.01}"/>
+                        <site name="k_right_pedal" type="sphere" size="0.01" pos="0 0 0"/>
                     </body>
                 </body>
 

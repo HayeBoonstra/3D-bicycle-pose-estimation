@@ -18,6 +18,8 @@ def _write_config(
     num_joints: int,
     batch_size: int,
     gt_2d: bool,
+    synthetic: bool,
+    eval_snap_xy_to_input: bool,
     epochs: int,
     max_batches: int,
     no_eval: bool,
@@ -39,7 +41,7 @@ def _write_config(
         "maxlen": clip_len,
         "dim_feat": 64,
         "mlp_ratio": 2,
-        "depth": 8,
+        "depth": 10,
         "att_fuse": True,
         "data_root": str(data_root),
         "subset_list": [subset_name],
@@ -51,6 +53,7 @@ def _write_config(
         "num_joints": num_joints,
         "no_conf": True,
         "gt_2d": gt_2d,
+        "eval_snap_xy_to_input": eval_snap_xy_to_input,
         "lambda_3d_velocity": 20.0,
         "lambda_scale": 0.5,
         "lambda_lv": 0.0,
@@ -60,7 +63,7 @@ def _write_config(
         "lambda_3dw": 0.0,
         "lambda_3d": 1.0,
         "lambda_diff": 0.5,
-        "synthetic": True,
+        "synthetic": synthetic,
         "flip": False,
         "mask_ratio": 0.0,
         "mask_T_ratio": 0.0,
@@ -91,10 +94,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--batch-size",
         type=int,
-        default=80,
+        default=32,
         help="Training/eval batch size written into PoseMamba config (increase to use more VRAM).",
     )
     parser.add_argument("--gt-2d", action="store_true")
+    parser.add_argument("--eval-snap-xy-to-input", action="store_false", default=False)
+    parser.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="Use PoseMamba's synthetic/GT-xy training branch instead of exported 2D inputs.",
+    )
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--max-batches", type=int, default=0)
     parser.add_argument("--no-eval", action="store_true")
@@ -114,6 +123,8 @@ def main() -> None:
         num_joints=args.num_joints,
         batch_size=args.batch_size,
         gt_2d=args.gt_2d,
+        synthetic=args.synthetic,
+        eval_snap_xy_to_input=args.eval_snap_xy_to_input,
         epochs=args.epochs,
         max_batches=args.max_batches,
         no_eval=args.no_eval,
