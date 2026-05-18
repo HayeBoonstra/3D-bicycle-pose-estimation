@@ -4,11 +4,12 @@ set -euo pipefail
 REPO_ROOT="${REPO_ROOT:-/home/hayepc/3D-bicycle-pose-estimation}"
 RAW_ROOT="${RAW_ROOT:-${REPO_ROOT}/data/raw_3D_keypoint_annotations}"
 SEQUENCE_ROOT="${SEQUENCE_ROOT:-${REPO_ROOT}/data/posemamba_training_sequences}"
-FRAMES="${FRAMES:-243}"
+# Long clips so split_clips(window=243, stride=81) yields multiple contiguous training windows (H36M-style).
+FRAMES="${FRAMES:-729}"
 FPS="${FPS:-60}"
 PATTERNS="${PATTERNS:-straight,left,right,sine,zigzag}"
-TRAJECTORIES_PER_PATTERN="${TRAJECTORIES_PER_PATTERN:-4}"
-NUM_CAMERAS="${NUM_CAMERAS:-32}"
+TRAJECTORIES_PER_PATTERN="${TRAJECTORIES_PER_PATTERN:-40}"
+NUM_CAMERAS="${NUM_CAMERAS:-16}"
 MIN_CAMERA_DISTANCE="${MIN_CAMERA_DISTANCE:-4.0}"
 MAX_CAMERA_DISTANCE="${MAX_CAMERA_DISTANCE:-14.0}"
 MIN_CAMERA_ELEVATION_DEG="${MIN_CAMERA_ELEVATION_DEG:-5.0}"
@@ -28,9 +29,11 @@ MAX_TURN_RATE_DEG="${MAX_TURN_RATE_DEG:-35.0}"
 MIN_SINE_YAW_DEG="${MIN_SINE_YAW_DEG:-10.0}"
 MAX_SINE_YAW_DEG="${MAX_SINE_YAW_DEG:-45.0}"
 MIN_SINE_FREQUENCY_HZ="${MIN_SINE_FREQUENCY_HZ:-0.05}"
-MAX_SINE_FREQUENCY_HZ="${MAX_SINE_FREQUENCY_HZ:-0.35}"
-WINDOW_SIZE="${WINDOW_SIZE:-27}"
-STRIDE="${STRIDE:-1}"
+MAX_SINE_FREQUENCY_HZ="${MAX_SINE_FREQUENCY_HZ:-1.00}"
+# Match PoseMamba_train_h36m_B.yaml: clip_len 243, offline stride 81 (MB3D_f243s81).
+# See 3d_keypoint_detector_training/README.md — YAML data_stride is not applied at train time.
+WINDOW_SIZE="${WINDOW_SIZE:-243}"
+STRIDE="${STRIDE:-81}"
 SEED="${SEED:-7}"
 VAL_RATIO="${VAL_RATIO:-0.1}"
 TEST_RATIO="${TEST_RATIO:-0.1}"
@@ -109,6 +112,7 @@ python "${REPO_ROOT}/3d_keypoint_detector_training/build_sequences.py" \
   --output-root "${SEQUENCE_ROOT}" \
   --window-size "${WINDOW_SIZE}" \
   --stride "${STRIDE}" \
+  --eval-stride "${WINDOW_SIZE}" \
   --val-ratio "${VAL_RATIO}" \
   --test-ratio "${TEST_RATIO}" \
   --seed "${SEED}"

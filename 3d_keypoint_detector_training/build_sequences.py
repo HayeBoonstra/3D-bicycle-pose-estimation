@@ -13,10 +13,14 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+POSEMAMBA_ROOT = REPO_ROOT / "PoseMamba"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+if str(POSEMAMBA_ROOT) not in sys.path:
+    sys.path.insert(0, str(POSEMAMBA_ROOT))
 
 from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX
+from lib.utils.utils_data import split_clips
 
 
 @dataclass
@@ -173,31 +177,65 @@ def _read_clip(clip_dir: Path) -> ClipData:
     )
 
 
-def _window_clip(clip: ClipData, window_size: int, stride: int) -> list[dict]:
+def _window_clip_legacy_center(clip: ClipData, window_size: int, stride: int) -> list[dict]:
+    """Legacy center-padded windows (not H36M split_clips). Kept for --slice-style legacy_center."""
     radius = window_size // 2
     idxs = list(range(0, clip.points_2d.shape[0], stride))
     samples: list[dict] = []
     for center in idxs:
         frame_ids = np.clip(np.arange(center - radius, center + radius + 1), 0, clip.points_2d.shape[0] - 1)
-        k2d = clip.points_2d[frame_ids]
-        conf = clip.conf_2d[frame_ids]
-        k3d = clip.points_3d_cam[frame_ids]
-        valid = clip.valid_3d[frame_ids]
-        samples.append(
-            {
-                "clip_id": clip.clip_id,
-                "frame_idx": clip.frame_idx[frame_ids],
-                "kpts2d": k2d,
-                "kpts2d_conf": conf,
-                "kpts3d_cam": k3d,
-                "valid_mask": valid,
-                "K": clip.K,
-                "R": clip.R,
-                "t": clip.t,
-                "image_wh": np.asarray(clip.image_wh, dtype=np.int32),
-            }
-        )
+        samples.append(_pack_window_sample(clip, frame_ids, st=int(frame_ids[0]), end=int(frame_ids[-1]) + 1, slice_style="legacy_center"))
     return samples
+
+
+def _pack_window_sample(
+    clip: ClipData,
+    frame_ids: np.ndarray | list[int],
+    *,
+    st: int,
+    end: int,
+    slice_style: str,
+) -> dict:
+    frame_ids = np.asarray(frame_ids, dtype=np.int64)
+    return {
+        "clip_id": clip.clip_id,
+        "frame_idx": clip.frame_idx[frame_ids],
+        "kpts2d": clip.points_2d[frame_ids],
+        "kpts2d_conf": clip.conf_2d[frame_ids],
+        "kpts3d_cam": clip.points_3d_cam[frame_ids],
+        "valid_mask": clip.valid_3d[frame_ids],
+        "K": clip.K,
+        "R": clip.R,
+        "t": clip.t,
+        "image_wh": np.asarray(clip.image_wh, dtype=np.int32),
+        "meta": {
+            "clip_id": clip.clip_id,
+            "st": int(st),
+            "end": int(end),
+            "slice_style": slice_style,
+            "window_size": int(frame_ids.shape[0]),
+        },
+    }
+
+
+def _slice_clip_contiguous(clip: ClipData, window_size: int, stride: int) -> list[dict]:
+    """PoseMamba-compatible contiguous windows (same as convert_h36m / split_clips)."""
+    num_frames = clip.points_2d.shape[0]
+    vid_list = [0] * num_frames
+    index_lists = split_clips(vid_list, window_size, stride)
+    samples: list[dict] = []
+    for index_list in index_lists:
+        frame_ids = np.asarray(list(index_list), dtype=np.int64)
+        st = int(frame_ids[0])
+        end = int(frame_ids[-1]) + 1
+        samples.append(_pack_window_sample(clip, frame_ids, st=st, end=end, slice_style="contiguous"))
+    return samples
+
+
+def _slice_clip(clip: ClipData, window_size: int, stride: int, slice_style: str) -> list[dict]:
+    if slice_style == "legacy_center":
+        return _window_clip_legacy_center(clip, window_size, stride)
+    return _slice_clip_contiguous(clip, window_size, stride)
 
 
 def _split_clip_ids(clip_ids: list[str], val_ratio: float, test_ratio: float, seed: int) -> dict[str, set[str]]:
@@ -229,7 +267,11 @@ def _write_posemamba_split(samples: list[dict], split_dir: Path, use_confidence:
             model_input = np.concatenate([k2d, sample["kpts2d_conf"][..., None]], axis=-1).astype(np.float32)
         else:
             model_input = k2d.astype(np.float32)
-        payload = {"data_input": model_input, "data_label": sample["kpts3d_cam"].astype(np.float32)}
+        payload = {
+            "data_input": model_input,
+            "data_label": sample["kpts3d_cam"].astype(np.float32),
+            "meta": sample.get("meta", {"clip_id": sample["clip_id"], "window_index": i}),
+        }
         with (split_dir / f"{sample['clip_id']}_{i:06d}.pkl").open("wb") as f:
             pickle.dump(payload, f)
 
@@ -243,14 +285,23 @@ def build_sequences(args: argparse.Namespace) -> None:
     clips = [_read_clip(path) for path in clip_dirs]
     split_map = _split_clip_ids([clip.clip_id for clip in clips], args.val_ratio, args.test_ratio, args.seed)
 
+    split_stride = {
+        "train": args.stride,
+        "val": args.eval_stride,
+        "test": args.eval_stride,
+    }
     split_samples: dict[str, list[dict]] = {"train": [], "val": [], "test": []}
+    windows_per_source_clip: dict[str, int] = {}
     for clip in clips:
         split = "train"
         if clip.clip_id in split_map["val"]:
             split = "val"
         elif clip.clip_id in split_map["test"]:
             split = "test"
-        split_samples[split].extend(_window_clip(clip, args.window_size, args.stride))
+        stride = split_stride[split]
+        windows = _slice_clip(clip, args.window_size, stride, args.slice_style)
+        windows_per_source_clip[clip.clip_id] = len(windows)
+        split_samples[split].extend(windows)
 
     out_root = args.output_root
     out_root.mkdir(parents=True, exist_ok=True)
@@ -278,10 +329,25 @@ def build_sequences(args: argparse.Namespace) -> None:
     _write_posemamba_split(split_samples["test"], posemamba_subset / "test", use_confidence=args.use_confidence)
 
     split_clip_counts = {k: len(v) for k, v in split_map.items()}
-    meta = {
+    window_counts = list(windows_per_source_clip.values())
+    manifest = {
         "joint_names": BICYCLE_KEYPOINT_NAMES,
         "window_size": args.window_size,
-        "stride": args.stride,
+        "stride_train": args.stride,
+        "stride_val_test": args.eval_stride,
+        "slice_style": args.slice_style,
+        "note": (
+            "Offline stride matches PoseMamba convert_h36m (contiguous [st:st+T), st+=stride). "
+            "YAML data_stride is inert for bicycle training (pre-sliced pickles). "
+            "On 243-frame-only raw clips expect 1 train window; use FRAMES>=729 for more."
+        ),
+        "windows_per_source_clip": {
+            "min": int(min(window_counts)) if window_counts else 0,
+            "max": int(max(window_counts)) if window_counts else 0,
+            "mean": float(np.mean(window_counts)) if window_counts else 0.0,
+            "histogram": dict(sorted({c: window_counts.count(c) for c in set(window_counts)}.items())),
+        },
+        "split_sample_counts": {k: len(v) for k, v in split_samples.items()},
         "split_ratios": {
             "val": args.val_ratio,
             "test": args.test_ratio,
@@ -293,7 +359,10 @@ def build_sequences(args: argparse.Namespace) -> None:
         "coord_frame_target": "camera",
     }
     with (out_root / "meta.json").open("w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2)
+        json.dump(manifest, f, indent=2)
+    posemamba_subset = out_root / f"PoseMamba_f{args.window_size}s{args.stride}"
+    with (posemamba_subset / "dataset_manifest.json").open("w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
 
     run_qa(out_root)
 
@@ -318,8 +387,30 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build PoseMamba-ready sequence dataset from synthetic clips.")
     parser.add_argument("--raw-root", type=Path, default=Path("raw_renders"))
     parser.add_argument("--output-root", type=Path, default=Path("data/posemamba_sequences"))
-    parser.add_argument("--window-size", type=int, default=27)
-    parser.add_argument("--stride", type=int, default=1)
+    parser.add_argument(
+        "--window-size",
+        type=int,
+        default=243,
+        help="Frames per PoseMamba sample (T); sets output folder PoseMamba_f{W}s{S}.",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=81,
+        help="Contiguous window start stride for train split (same as convert_h36m data_stride_train).",
+    )
+    parser.add_argument(
+        "--eval-stride",
+        type=int,
+        default=243,
+        help="Window stride for val/test splits (H36M test uses 243 = non-overlapping).",
+    )
+    parser.add_argument(
+        "--slice-style",
+        choices=("contiguous", "legacy_center"),
+        default="contiguous",
+        help="contiguous uses PoseMamba split_clips; legacy_center keeps old center-padded windows.",
+    )
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--test-ratio", type=float, default=0.1)

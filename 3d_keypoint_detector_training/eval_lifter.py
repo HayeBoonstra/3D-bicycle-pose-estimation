@@ -23,6 +23,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    config_path = args.config.resolve()
+    print(f"[eval] image 2D (data_input) config={config_path}", flush=True)
+
     in_target_env = os.environ.get("CONDA_DEFAULT_ENV") == args.conda_env
     cmd = []
     if not in_target_env:
@@ -32,7 +35,7 @@ def main() -> None:
             "python",
             "train.py",
             "--config",
-            str(args.config.resolve()),
+            str(config_path),
             "--evaluate",
             str(args.checkpoint.resolve()),
         ]
@@ -45,4 +48,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

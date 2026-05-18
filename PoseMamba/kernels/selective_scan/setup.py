@@ -42,8 +42,8 @@ def get_cuda_bare_metal_version(cuda_dir):
 
     return raw_output, bare_metal_version
 
-MODES = ["oflex"]
-# MODES = ["core", "ndstate", "oflex"]
+# Build `core` for PoseMamba BiSTSSM `v2` (SelectiveScanCore); `oflex` for other forward types.
+MODES = ["core", "oflex"]
 # MODES = ["core", "ndstate", "oflex", "nrow"]
 
 def get_ext():

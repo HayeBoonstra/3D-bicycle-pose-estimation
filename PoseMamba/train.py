@@ -64,11 +64,6 @@ def save_checkpoint(chk_path, epoch, lr, optimizer, model_pos, min_loss):
     
 def evaluate(args, model_pos, test_loader, datareader):
     log.info('INFO: Testing')
-    if datareader is None and getattr(args, "gt_2d", False):
-        log.info(
-            "INFO: eval_snap_xy_to_input=%r (if True, MPJPE replaces pred x,y with batch input x,y before the metric)"
-            % getattr(args, "eval_snap_xy_to_input", False)
-        )
     results_all = []
     gts_all = []
     model_pos.eval()            

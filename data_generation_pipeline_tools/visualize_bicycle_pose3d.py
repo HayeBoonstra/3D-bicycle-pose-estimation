@@ -74,6 +74,21 @@ def subtract_root(motion: np.ndarray, root_index: int = 0) -> np.ndarray:
     return (motion - motion[:, root_index : root_index + 1, :]).astype(np.float32)
 
 
+def reorient_for_display(motion: np.ndarray, mode: str) -> np.ndarray:
+    """Apply a fixed axis remap for matplotlib viewing (does not change stored metrics)."""
+    if mode in ("none", ""):
+        return motion
+    if mode == "camera_up":
+        # Camera coords: X right, Y down, Z forward -> plot X right, Z up, Y into screen.
+        out = motion.astype(np.float32, copy=True)
+        x, y, z = out[..., 0].copy(), out[..., 1].copy(), out[..., 2].copy()
+        out[..., 0] = x
+        out[..., 1] = z
+        out[..., 2] = -y
+        return out
+    raise ValueError(f"Unknown reorient mode: {mode!r}")
+
+
 def _as_time_joint_xyz(arr: np.ndarray) -> np.ndarray:
     if arr.ndim == 4:
         raise ValueError("Array is 4D; select a sequence with --sequence-index on the loader.")
@@ -188,6 +203,7 @@ def render_frame(
     hi: np.ndarray,
     elev: float,
     azim: float,
+    title: str | None = None,
 ) -> np.ndarray:
     """Return an RGB uint8 image for one time step."""
 
@@ -198,12 +214,12 @@ def render_frame(
         fig = plt.figure(figsize=(12.8, 5.4), dpi=120)
         ax0 = fig.add_subplot(1, 2, 1, projection="3d")
         ax1 = fig.add_subplot(1, 2, 2, projection="3d")
-        for ax, title, pose, ec in (
+        for ax, panel_title, pose, ec in (
             (ax0, "Prediction", pred, "#2F70AF"),
             (ax1, "Ground truth", gt, "#666666"),
         ):
             draw_skeleton(ax, pose, edgecolor=ec, pointcolor=ec)
-            ax.set_title(title, fontsize=12)
+            ax.set_title(panel_title, fontsize=12)
             ax.set_xlim(lo[0], hi[0])
             ax.set_ylim(lo[1], hi[1])
             ax.set_zlim(lo[2], hi[2])
@@ -222,6 +238,9 @@ def render_frame(
         ax.view_init(elev=elev, azim=azim)
         _style_axes(ax)
 
+    if title:
+        fig.suptitle(title, fontsize=11, y=0.98)
+
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=120, bbox_inches="tight", pad_inches=0.06)
     plt.close(fig)
@@ -239,16 +258,21 @@ def motion_to_images_or_video(
     fps: int,
     elev: float,
     azim: float,
+    reorient: str = "none",
+    title: str | None = None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     if gt is not None and gt.shape != pred.shape:
         raise ValueError(f"pred shape {pred.shape} does not match gt {gt.shape}")
 
-    if gt is not None:
-        lo, hi = axis_limits_for_poses(pred, gt)
+    pred_v = reorient_for_display(pred, reorient)
+    gt_v = reorient_for_display(gt, reorient) if gt is not None else None
+
+    if gt_v is not None:
+        lo, hi = axis_limits_for_poses(pred_v, gt_v)
     else:
-        lo, hi = axis_limits_for_poses(pred)
+        lo, hi = axis_limits_for_poses(pred_v)
 
     meta: dict[str, Any] = {
         "out_dir": str(out_dir),
@@ -259,11 +283,24 @@ def motion_to_images_or_video(
 
     if gt is not None:
         dif = pred - gt
+        per_joint = np.mean(np.linalg.norm(dif, axis=-1), axis=0)
         meta["mpjpe_mean_m"] = float(np.mean(np.linalg.norm(dif, axis=-1)))
-        meta["mpjpe_per_joint_m"] = np.mean(np.linalg.norm(dif, axis=-1), axis=(0,)).tolist()
+        meta["mpjpe_per_joint_m"] = {
+            name: float(per_joint[i]) for i, name in enumerate(BICYCLE_KEYPOINT_NAMES)
+        }
+        meta["mpjpe_mean_mm"] = meta["mpjpe_mean_m"] * 1000.0
 
     for t in tqdm(range(pred.shape[0]), desc="frames"):
-        rgb = render_frame(pred[t], gt[t] if gt is not None else None, layout=layout, lo=lo, hi=hi, elev=elev, azim=azim)
+        rgb = render_frame(
+            pred_v[t],
+            gt_v[t] if gt_v is not None else None,
+            layout=layout,
+            lo=lo,
+            hi=hi,
+            elev=elev,
+            azim=azim,
+            title=title,
+        )
         imageio.imwrite(out_dir / f"frame_{t:04d}.png", rgb)
 
     if write_video:
@@ -288,8 +325,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--layout", choices=("split", "overlay"), default="split", help="split: two panels; overlay: same 3D axes.")
     p.add_argument("--video", action="store_true", help="Also write out.mp4 next to the frame directory (basename).")
     p.add_argument("--fps", type=int, default=12)
-    p.add_argument("--elev", type=float, default=18.0)
-    p.add_argument("--azim", type=float, default=-65.0)
+    p.add_argument("--elev", type=float, default=20.0)
+    p.add_argument("--azim", type=float, default=-70.0)
+    p.add_argument(
+        "--reorient",
+        choices=("none", "camera_up"),
+        default="camera_up",
+        help="Display-only axis remap so the bicycle appears upright (metrics use raw arrays).",
+    )
+    p.add_argument("--title", type=str, default=None, help="Optional figure title (e.g. MPJPE summary).")
     p.add_argument("--root-index", type=int, default=0, help="Root joint index (default: k_bottom_bracket).")
     p.set_defaults(subtract_root_pred=False, subtract_root_gt=True)
     p.add_argument(
@@ -344,6 +388,8 @@ def main() -> None:
         fps=args.fps,
         elev=args.elev,
         azim=args.azim,
+        reorient=args.reorient,
+        title=args.title,
     )
     print(json.dumps(meta, indent=2))
 

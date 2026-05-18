@@ -6,7 +6,7 @@ CONDA_ENV="${CONDA_ENV:-posemamba}"
 RAW_ROOT="${RAW_ROOT:-${REPO_ROOT}/raw_mujoco_direct_smoke}"
 SEQUENCE_ROOT="${SEQUENCE_ROOT:-${REPO_ROOT}/data/posemamba_sequences_mujoco_direct}"
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-${REPO_ROOT}/checkpoints/posemamba_mujoco_direct_smoke}"
-WINDOW_SIZE="${WINDOW_SIZE:-27}"
+WINDOW_SIZE="${WINDOW_SIZE:-81}"
 STRIDE="${STRIDE:-1}"
 
 "${REPO_ROOT}/3d_keypoint_detector_training/generate_mujoco_direct_dataset.sh"

@@ -1,4 +1,4 @@
-"""Train PoseMamba on bicycle synthetic sequence data."""
+"""Train PoseMamba on bicycle synthetic sequence data (bbox-normalized image 2D)."""
 
 from __future__ import annotations
 
@@ -9,21 +9,25 @@ from pathlib import Path
 
 import yaml
 
+GENERATED_CONFIG_NAME = "PoseMamba_train_bicycle.generated.yaml"
+
 
 def _write_config(
     output_path: Path,
     data_root: Path,
     subset_name: str,
     clip_len: int,
+    offline_stride: int,
     num_joints: int,
     batch_size: int,
-    gt_2d: bool,
-    synthetic: bool,
-    eval_snap_xy_to_input: bool,
+    bicycle_2d_noise_sigma: float,
     epochs: int,
     max_batches: int,
     no_eval: bool,
     max_eval_batches: int,
+    dim_feat: int,
+    flip: bool,
+    checkpoint_frequency: int,
 ) -> None:
     cfg = {
         "train_2d": False,
@@ -31,7 +35,7 @@ def _write_config(
         "finetune": False,
         "partial_train": None,
         "epochs": epochs,
-        "checkpoint_frequency": 10,
+        "checkpoint_frequency": checkpoint_frequency,
         "batch_size": batch_size,
         "dropout": 0.0,
         "learning_rate": 2e-4,
@@ -39,7 +43,7 @@ def _write_config(
         "lr_decay": 0.99,
         "backbone": "PoseMamba",
         "maxlen": clip_len,
-        "dim_feat": 64,
+        "dim_feat": dim_feat,
         "mlp_ratio": 2,
         "depth": 10,
         "att_fuse": True,
@@ -47,13 +51,14 @@ def _write_config(
         "subset_list": [subset_name],
         "dt_file": "unused_for_bicycle.pkl",
         "clip_len": clip_len,
-        "data_stride": max(1, clip_len // 3),
+        "data_stride": offline_stride,
         "rootrel": True,
         "sample_stride": 1,
         "num_joints": num_joints,
         "no_conf": True,
-        "gt_2d": gt_2d,
-        "eval_snap_xy_to_input": eval_snap_xy_to_input,
+        "gt_2d": False,
+        "eval_snap_xy_to_input": False,
+        "bicycle_2d_noise_sigma": bicycle_2d_noise_sigma,
         "lambda_3d_velocity": 20.0,
         "lambda_scale": 0.5,
         "lambda_lv": 0.0,
@@ -63,8 +68,8 @@ def _write_config(
         "lambda_3dw": 0.0,
         "lambda_3d": 1.0,
         "lambda_diff": 0.5,
-        "synthetic": synthetic,
-        "flip": False,
+        "synthetic": False,
+        "flip": flip,
         "mask_ratio": 0.0,
         "mask_T_ratio": 0.0,
         "noise": False,
@@ -77,61 +82,69 @@ def _write_config(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train PoseMamba bicycle lifter.")
+    parser = argparse.ArgumentParser(
+        description="Train PoseMamba bicycle lifter on bbox-normalized image 2D (data_input).",
+    )
     parser.add_argument("--conda-env", default="posemamba")
     parser.add_argument("--posemamba-root", type=Path, default=Path("PoseMamba"))
-    parser.add_argument("--sequence-root", type=Path, default=Path("data/posemamba_sequences"))
-    parser.add_argument("--window-size", type=int, default=27)
-    parser.add_argument("--stride", type=int, default=1)
+    parser.add_argument("--sequence-root", type=Path, default=Path("data/posemamba_training_sequences"))
+    parser.add_argument(
+        "--noise-2d",
+        action="store_true",
+        help="Apply synthetic detector noise to data_input during training.",
+    )
+    parser.add_argument("--window-size", type=int, default=243)
+    parser.add_argument("--stride", type=int, default=81)
     parser.add_argument("--subset-name", default="BICYCLE")
-    parser.add_argument("--checkpoint-dir", type=Path, default=Path("checkpoints/posemamba_bicycle"))
+    parser.add_argument(
+        "--checkpoint-dir",
+        type=Path,
+        default=Path("checkpoints/posemamba_bicycle"),
+    )
     parser.add_argument(
         "--generated-config",
         type=Path,
-        default=Path("3d_keypoint_detector_training/PoseMamba_train_bicycle.generated.yaml"),
+        default=Path("3d_keypoint_detector_training") / GENERATED_CONFIG_NAME,
     )
     parser.add_argument("--num-joints", type=int, default=18)
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=32,
-        help="Training/eval batch size written into PoseMamba config (increase to use more VRAM).",
-    )
-    parser.add_argument("--gt-2d", action="store_true")
-    parser.add_argument("--eval-snap-xy-to-input", action="store_false", default=False)
-    parser.add_argument(
-        "--synthetic",
-        action="store_true",
-        help="Use PoseMamba's synthetic/GT-xy training branch instead of exported 2D inputs.",
-    )
-    parser.add_argument("--epochs", type=int, default=40)
+    parser.add_argument("--batch-size", type=int, default=4)
+    parser.add_argument("--dim-feat", type=int, default=128)
+    parser.add_argument("--checkpoint-frequency", type=int, default=30)
+    parser.add_argument("--no-flip", action="store_true")
+    parser.add_argument("--epochs", type=int, default=120)
     parser.add_argument("--max-batches", type=int, default=0)
     parser.add_argument("--no-eval", action="store_true")
     parser.add_argument("--max-eval-batches", type=int, default=0)
+    parser.add_argument("--resume", type=Path, default=None)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    posemamba_data_root = (args.sequence_root / f"PoseMamba_f{args.window_size}s{args.stride}").resolve()
+    repo_root = Path(__file__).resolve().parents[1]
     config_path = args.generated_config.resolve()
+    checkpoint_dir = args.checkpoint_dir.resolve()
+    noise_sigma = 0.02 if args.noise_2d else 0.0
+
+    posemamba_data_root = (args.sequence_root / f"PoseMamba_f{args.window_size}s{args.stride}").resolve()
     _write_config(
         output_path=config_path,
         data_root=posemamba_data_root,
         subset_name=args.subset_name,
         clip_len=args.window_size,
+        offline_stride=args.stride,
         num_joints=args.num_joints,
         batch_size=args.batch_size,
-        gt_2d=args.gt_2d,
-        synthetic=args.synthetic,
-        eval_snap_xy_to_input=args.eval_snap_xy_to_input,
+        bicycle_2d_noise_sigma=noise_sigma,
         epochs=args.epochs,
         max_batches=args.max_batches,
         no_eval=args.no_eval,
         max_eval_batches=args.max_eval_batches,
+        dim_feat=args.dim_feat,
+        flip=not args.no_flip,
+        checkpoint_frequency=args.checkpoint_frequency,
     )
 
-    checkpoint_dir = args.checkpoint_dir.resolve()
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     in_target_env = os.environ.get("CONDA_DEFAULT_ENV") == args.conda_env
     cmd = []
@@ -147,6 +160,17 @@ def main() -> None:
             str(checkpoint_dir),
         ]
     )
+    if args.resume is not None:
+        resume_path = args.resume.expanduser().resolve()
+        if not resume_path.is_file():
+            raise SystemExit(f"error: --resume is not a file: {resume_path}")
+        if resume_path.suffix.lower() != ".bin":
+            raise SystemExit(
+                f"error: --resume must be a PoseMamba checkpoint (.bin), got: {resume_path}\n"
+                "  Example: ./3d_keypoint_detector_training/start_training.sh "
+                "checkpoints/posemamba_bicycle/<run>/latest_epoch.bin"
+            )
+        cmd.extend(["-r", str(resume_path)])
     env = os.environ.copy()
     for name in ("_PYTHON_SYSCONFIGDATA_NAME", "CC", "CXX", "CUDAHOSTCXX"):
         env.pop(name, None)
@@ -155,4 +179,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
