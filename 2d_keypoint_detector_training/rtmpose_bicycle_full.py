@@ -1,7 +1,4 @@
-_base_ = [
-    "/home/hayepc/3D-bicycle-pose-estimation/.venv-mmpose311/lib/python3.11/site-packages/"
-    "mmpose/.mim/configs/_base_/default_runtime.py"
-]
+_base_ = ["./configs/_base_/default_runtime.py"]
 
 # Runtime
 max_epochs = 1000

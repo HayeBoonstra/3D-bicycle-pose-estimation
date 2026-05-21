@@ -4,12 +4,13 @@ import os
 os.environ.setdefault("CORE_MODEL_SAM_ENABLED", "False")
 os.environ.setdefault("CORE_MODEL_SAM3_ENABLED", "False")
 os.environ.setdefault("CORE_MODEL_GAZE_ENABLED", "False")
+os.environ.setdefault("CORE_MODEL_YOLO_WORLD_ENABLED", "False")
 
 import supervision as sv
 from inference import get_model
 from PIL import Image
 
-image = Image.open("/home/hayepc/3D-bicycle-pose-estimation/data/bicycle_pose_dataset/images/train/clip_docks_scene_27911967/frame_0057.png")
+image = Image.open("/home/hayepc/3D-bicycle-pose-estimation/Bounding box detector/test_image.png")
 
 print("Loading model...")
 model = get_model("rfdetr-2xlarge")

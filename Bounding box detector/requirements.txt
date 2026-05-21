@@ -1,0 +1,7 @@
+torch
+torchvision
+
+inference
+supervision
+Pillow
+"inference-models[onnx-cu12]"
