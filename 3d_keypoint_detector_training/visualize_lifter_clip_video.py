@@ -198,7 +198,12 @@ def parse_args() -> argparse.Namespace:
         help="One source clip (e.g. PoseMamba_left_traj0000_cam06). If omitted, process all clips in dir.",
     )
     p.add_argument("--out", type=Path, default=_REPO_ROOT / "training_outputs" / "lifter_clip_viz")
-    p.add_argument("--input-2d-mode", choices=("image_2d", "image_2d_noisy"), default="image_2d")
+    p.add_argument(
+        "--input-2d-mode",
+        choices=("image_2d", "image_2d_noisy"),
+        default="image_2d",
+        help="Bbox-normalized data_input (same as training).",
+    )
     p.add_argument("--fps", type=int, default=30)
     p.add_argument(
         "--layout",
@@ -216,13 +221,14 @@ def main() -> None:
     out_root = args.out.resolve()
     out_root.mkdir(parents=True, exist_ok=True)
 
-    mode = Input2DMode(args.input_2d_mode)
     groups = _group_windows(input_dir, args.clip_id)
     if not groups:
         raise SystemExit(f"No .pkl files found under {input_dir}")
 
     print(f"[setup] Loading model from {args.checkpoint}", flush=True)
     model, cfg, device = _load_model(args.checkpoint.resolve(), args.config.resolve(), args.posemamba_root.resolve())
+    mode = Input2DMode(args.input_2d_mode)
+    print(f"[setup] 2D input mode={mode.value} (data_input / bbox-normalized)", flush=True)
 
     clip_ids = sorted(groups.keys())
     if args.max_clips > 0:

@@ -14,7 +14,12 @@ DEFAULT_NOISE_SIGMA = 0.02
 DEFAULT_NOISE_DROPOUT_P = 0.05
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_CHECKPOINT_DIR = _REPO_ROOT / "checkpoints" / "posemamba_gpu_run_2026_05_18_T_17_22_57"
+BICYCLE_GENERATED_CONFIG = (
+    _REPO_ROOT / "3d_keypoint_detector_training" / "PoseMamba_train_bicycle.generated.yaml"
+)
+# Set after training: checkpoints/posemamba_bicycle/<timestamp>/best_epoch.bin
+TIMESTAMP = "2026_05_19_T_06_11_25"
+DEFAULT_CHECKPOINT_DIR = _REPO_ROOT / "checkpoints" / f"posemamba_bicycle_{TIMESTAMP}"
 DEFAULT_CHECKPOINT = DEFAULT_CHECKPOINT_DIR / "best_epoch.bin"
 
 
@@ -66,7 +71,7 @@ def prepare_2d(
     noise_cfg: Optional[Noise2DConfig] = None,
     rng: Optional[np.random.Generator] = None,
 ) -> np.ndarray:
-    """Build (T, J, C) 2D from bbox-normalized data_input (matches MotionDataset3D when gt_2d=false)."""
+    """Build (T, J, C) 2D from bbox-normalized ``data_input`` (matches BICYCLE training)."""
     if isinstance(mode, str):
         mode = Input2DMode(mode)
 
@@ -112,7 +117,7 @@ def mpjpe_per_frame(pred: np.ndarray, gt: np.ndarray) -> float:
 
 
 def mpjpe_eval(pred: np.ndarray, gt: np.ndarray, cfg: Any) -> dict[str, float]:
-    """Root-relative MPJPE (same as train.py evaluate() for bicycle gt_2d=false)."""
+    """Root-relative MPJPE (same as train.py evaluate() for bicycle, datareader=None)."""
     pred = np.asarray(pred, dtype=np.float32)
     gt = np.asarray(gt, dtype=np.float32)
     if pred.ndim == 3:
@@ -153,6 +158,18 @@ def _easydict_checkpoint_config(config_path: Path) -> Any:
     return cfg
 
 
+def export_plain_config(cfg: Any, output_path: Path) -> Path:
+    """Write a SafeLoader-friendly YAML from an EasyDict (for PoseMamba train.py)."""
+    import yaml
+
+    output_path = output_path.resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = dict(cfg) if isinstance(cfg, dict) else {k: cfg[k] for k in cfg.keys()}
+    with output_path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(payload, f, sort_keys=False)
+    return output_path
+
+
 def load_training_config(checkpoint_path: Path, fallback_config: Path) -> Any:
     """Load model config from checkpoint dir, or plain YAML fallback."""
     import sys
@@ -166,10 +183,23 @@ def load_training_config(checkpoint_path: Path, fallback_config: Path) -> Any:
     if ckpt_cfg.is_file():
         text = ckpt_cfg.read_text(encoding="utf-8")
         if "python/object" in text or "easydict.EasyDict" in text:
-            return _easydict_checkpoint_config(ckpt_cfg)
-        try:
-            return get_config(str(ckpt_cfg))
-        except Exception:
-            pass
+            cfg = _easydict_checkpoint_config(ckpt_cfg)
+        else:
+            try:
+                cfg = get_config(str(ckpt_cfg))
+            except Exception:
+                cfg = None
+        if cfg is not None:
+            _apply_bicycle_config_overrides(cfg)
+            return cfg
 
-    return get_config(str(fallback_config.resolve()))
+    cfg = get_config(str(fallback_config.resolve()))
+    _apply_bicycle_config_overrides(cfg)
+    return cfg
+
+
+def _apply_bicycle_config_overrides(cfg: Any) -> None:
+    if "BICYCLE" in getattr(cfg, "subset_list", []):
+        cfg.gt_2d = False
+        cfg.synthetic = False
+        cfg.eval_snap_xy_to_input = False

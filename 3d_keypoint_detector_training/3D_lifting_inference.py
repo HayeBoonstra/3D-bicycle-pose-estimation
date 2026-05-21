@@ -198,7 +198,10 @@ def main() -> None:
     model, cfg, device = _load_model()
     input_mode = _resolve_input_mode()
     clip_len = int(getattr(cfg, "clip_len", getattr(cfg, "maxlen", 243)))
-    print(f"[setup] device={device} input_2d_mode={input_mode.value} clip_len={clip_len}", flush=True)
+    print(
+        f"[setup] device={device} input_2d_mode={input_mode.value} clip_len={clip_len}",
+        flush=True,
+    )
 
     summary: list[dict[str, Any]] = []
     for i, input_file in enumerate(files, start=1):

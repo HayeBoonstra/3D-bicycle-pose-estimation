@@ -288,7 +288,7 @@ def train_with_config(args, opts):
     log = colorlogger(opts.checkpoint, log_name='log.txt')
     log.info(args)
     with open(os.path.join(opts.checkpoint, 'config.yaml'), 'w') as f:
-        yaml.dump(args, f, sort_keys=False)
+        yaml.safe_dump(dict(args), f, sort_keys=False)
     log.info(f"Number of GPUs found:{torch.cuda.device_count()}")
     if tensorboardX is not None:
         train_writer = tensorboardX.SummaryWriter(os.path.join(opts.checkpoint, "logs"))

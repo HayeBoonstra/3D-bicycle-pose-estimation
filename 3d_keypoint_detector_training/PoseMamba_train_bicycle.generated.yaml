@@ -27,6 +27,7 @@ num_joints: 18
 no_conf: true
 gt_2d: false
 eval_snap_xy_to_input: false
+synthetic: false
 bicycle_2d_noise_sigma: 0.0
 lambda_3d_velocity: 20.0
 lambda_scale: 0.5
@@ -37,7 +38,6 @@ lambda_av: 0.0
 lambda_3dw: 0.0
 lambda_3d: 1.0
 lambda_diff: 0.5
-synthetic: false
 flip: true
 mask_ratio: 0.0
 mask_T_ratio: 0.0

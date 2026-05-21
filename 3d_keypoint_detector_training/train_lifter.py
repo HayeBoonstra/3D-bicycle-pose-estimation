@@ -56,8 +56,9 @@ def _write_config(
         "sample_stride": 1,
         "num_joints": num_joints,
         "no_conf": True,
-        "gt_2d": False,
+        "gt_2d": False,  # ignored for BICYCLE: dataset always uses data_input
         "eval_snap_xy_to_input": False,
+        "synthetic": False,  # do not use oracle 2D from GT 3D
         "bicycle_2d_noise_sigma": bicycle_2d_noise_sigma,
         "lambda_3d_velocity": 20.0,
         "lambda_scale": 0.5,
@@ -68,7 +69,6 @@ def _write_config(
         "lambda_3dw": 0.0,
         "lambda_3d": 1.0,
         "lambda_diff": 0.5,
-        "synthetic": False,
         "flip": flip,
         "mask_ratio": 0.0,
         "mask_T_ratio": 0.0,

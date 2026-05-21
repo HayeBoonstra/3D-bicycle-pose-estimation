@@ -5,7 +5,14 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess
+import sys
+import tempfile
 from pathlib import Path
+
+_REPO = Path(__file__).resolve().parents[1]
+if str(_REPO / "3d_keypoint_detector_training") not in sys.path:
+    sys.path.insert(0, str(_REPO / "3d_keypoint_detector_training"))
+from posemamba_bicycle_io import export_plain_config, load_training_config  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,8 +30,16 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    config_path = args.config.resolve()
-    print(f"[eval] image 2D (data_input) config={config_path}", flush=True)
+    ckpt = args.checkpoint.resolve()
+    cfg = load_training_config(ckpt, args.config.resolve())
+    print("[eval] BICYCLE uses data_input (bbox-normalized 2D) for train and test", flush=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        suffix=".yaml",
+        delete=False,
+        prefix="posemamba_eval_",
+    ) as tmp:
+        config_path = export_plain_config(cfg, Path(tmp.name))
 
     in_target_env = os.environ.get("CONDA_DEFAULT_ENV") == args.conda_env
     cmd = []
