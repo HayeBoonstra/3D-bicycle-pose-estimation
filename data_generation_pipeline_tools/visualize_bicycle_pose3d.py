@@ -79,12 +79,13 @@ def reorient_for_display(motion: np.ndarray, mode: str) -> np.ndarray:
     if mode in ("none", ""):
         return motion
     if mode == "camera_up":
-        # Camera coords: X right, Y down, Z forward -> plot X right, Z up, Y into screen.
+        # Camera: X right, Y down (OpenCV) or Y up depending on export; Z forward.
+        # Matplotlib 3D screen-up is plot-Z. Training pickles use Y-up in practice, so plot-Z = Y.
         out = motion.astype(np.float32, copy=True)
         x, y, z = out[..., 0].copy(), out[..., 1].copy(), out[..., 2].copy()
         out[..., 0] = x
         out[..., 1] = z
-        out[..., 2] = -y
+        out[..., 2] = y
         return out
     raise ValueError(f"Unknown reorient mode: {mode!r}")
 
@@ -176,6 +177,24 @@ def _style_axes(ax: plt.Axes) -> None:
     ax.zaxis.pane.fill = False  # type: ignore[attr-defined]
 
 
+def _finalize_3d_axes(
+    ax: plt.Axes,
+    lo: np.ndarray,
+    hi: np.ndarray,
+    *,
+    elev: float,
+    azim: float,
+    invert_z: bool,
+) -> None:
+    ax.set_xlim(lo[0], hi[0])
+    ax.set_ylim(lo[1], hi[1])
+    ax.set_zlim(lo[2], hi[2])
+    ax.view_init(elev=elev, azim=azim)
+    if invert_z:
+        ax.invert_zaxis()
+    _style_axes(ax)
+
+
 def draw_skeleton(
     ax: plt.Axes,
     joints: np.ndarray,
@@ -203,6 +222,7 @@ def render_frame(
     hi: np.ndarray,
     elev: float,
     azim: float,
+    invert_z: bool = True,
     title: str | None = None,
 ) -> np.ndarray:
     """Return an RGB uint8 image for one time step."""
@@ -220,11 +240,7 @@ def render_frame(
         ):
             draw_skeleton(ax, pose, edgecolor=ec, pointcolor=ec)
             ax.set_title(panel_title, fontsize=12)
-            ax.set_xlim(lo[0], hi[0])
-            ax.set_ylim(lo[1], hi[1])
-            ax.set_zlim(lo[2], hi[2])
-            ax.view_init(elev=elev, azim=azim)
-            _style_axes(ax)
+            _finalize_3d_axes(ax, lo, hi, elev=elev, azim=azim, invert_z=invert_z)
     else:
         fig = plt.figure(figsize=(7.2, 6.4), dpi=120)
         ax = fig.add_subplot(1, 1, 1, projection="3d")
@@ -232,11 +248,7 @@ def render_frame(
             draw_skeleton(ax, gt, edgecolor="#999999", linewidth=1.8, linestyle="--")
         draw_skeleton(ax, pred, edgecolor="#00457E", linewidth=2.4)
         ax.set_title("Prediction vs ground truth" if gt is not None else "Prediction", fontsize=12)
-        ax.set_xlim(lo[0], hi[0])
-        ax.set_ylim(lo[1], hi[1])
-        ax.set_zlim(lo[2], hi[2])
-        ax.view_init(elev=elev, azim=azim)
-        _style_axes(ax)
+        _finalize_3d_axes(ax, lo, hi, elev=elev, azim=azim, invert_z=invert_z)
 
     if title:
         fig.suptitle(title, fontsize=11, y=0.98)
@@ -259,6 +271,7 @@ def motion_to_images_or_video(
     elev: float,
     azim: float,
     reorient: str = "none",
+    invert_z: bool = True,
     title: str | None = None,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -299,6 +312,7 @@ def motion_to_images_or_video(
             hi=hi,
             elev=elev,
             azim=azim,
+            invert_z=invert_z,
             title=title,
         )
         imageio.imwrite(out_dir / f"frame_{t:04d}.png", rgb)

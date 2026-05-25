@@ -15,7 +15,7 @@ dim_feat: 64
 mlp_ratio: 2
 depth: 10
 att_fuse: true
-data_root: /home/hayepc/3D-bicycle-pose-estimation/data/posemamba_training_sequences/PoseMamba_f243s81
+data_root: /mnt/SmallSSD/3D-bicycle-pose-estimation/posemamba_training_sequences/PoseMamba_f243s81_detected2d
 subset_list:
 - BICYCLE
 dt_file: unused_for_bicycle.pkl

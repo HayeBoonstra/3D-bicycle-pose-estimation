@@ -1,8 +1,8 @@
 _base_ = ["./configs/_base_/default_runtime.py"]
 
 # Runtime
-max_epochs = 1000
-stage2_num_epochs = 100
+max_epochs = 250
+stage2_num_epochs = 50
 base_lr = 5e-4
 input_size = (256, 320)
 
@@ -38,6 +38,7 @@ param_scheduler = [
     ),
 ]
 
+# Effective batch = train_dataloader.batch_size * num_gpus (see auto_scale_lr in Runner).
 auto_scale_lr = dict(enable=True, base_batch_size=50)
 
 # Keypoint codec
@@ -109,7 +110,9 @@ model = dict(
 # Dataset
 dataset_type = "CocoDataset"
 data_mode = "topdown"
-data_root = "/home/hayepc/3D-bicycle-pose-estimation/data/bicycle_pose_dataset"
+# <repo>/data/bicycle_pose_dataset (via MMEngine {{ fileDirname }}). Override on servers:
+#   export BICYCLE_POSE_DATA_ROOT=/mnt/datasets/bicycle_pose_dataset
+data_root = "{{$BICYCLE_POSE_DATA_ROOT:{{ fileDirname }}/../data/bicycle_pose_dataset}}"
 backend_args = dict(backend="local")
 
 keypoint_names = [
@@ -189,10 +192,13 @@ train_pipeline_stage2 = [
     dict(type="PackPoseInputs"),
 ]
 
-# Data loaders
+# Data loaders (batch_size is per GPU under DDP; 64 train fits ~8GB at 256×320)
 train_dataloader = dict(
     batch_size=64,
-    num_workers=12,
+    num_workers=16,
+    prefetch_factor=4,
+    pin_memory=True,
+    multiprocessing_context="spawn",
     persistent_workers=True,
     sampler=dict(type="DefaultSampler", shuffle=True),
     dataset=dict(
@@ -207,8 +213,10 @@ train_dataloader = dict(
 )
 
 val_dataloader = dict(
-    batch_size=64,
-    num_workers=6,
+    batch_size=128,
+    num_workers=8,
+    prefetch_factor=2,
+    multiprocessing_context="spawn",
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
@@ -225,8 +233,10 @@ val_dataloader = dict(
 )
 
 test_dataloader = dict(
-    batch_size=64,
-    num_workers=6,
+    batch_size=128,
+    num_workers=8,
+    prefetch_factor=2,
+    multiprocessing_context="spawn",
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type="DefaultSampler", shuffle=False, round_up=False),
@@ -259,10 +269,8 @@ custom_hooks = [
 val_evaluator = dict(type="CocoMetric", ann_file=f"{data_root}/annotations/val.json")
 test_evaluator = dict(type="CocoMetric", ann_file=f"{data_root}/annotations/test.json")
 
-vis_backends = [
-    dict(type="LocalVisBackend"),
-    dict(type="TensorboardVisBackend"),
-]
+# TensorBoard only on rank 0; disabled here to avoid rank-0 I/O skew under DDP.
+vis_backends = [dict(type="LocalVisBackend")]
 visualizer = dict(
     type="PoseLocalVisualizer",
     vis_backends=vis_backends,

@@ -53,3 +53,20 @@ def reprojection_rmse(points_camera: np.ndarray, points_image: np.ndarray, camer
     err = np.linalg.norm(proj - points_image, axis=-1)
     return float(np.sqrt(np.mean(np.square(err))))
 
+
+def camera_3d_consistency_rmse(points_world: np.ndarray, points_camera: np.ndarray, camera: CameraModel) -> float:
+    """RMSE between exported kps_camera and R,t @ kps_world.
+
+    Blender exports use Blender camera-space R,t with OpenCV Z on kps_camera (-Z forward);
+    MuJoCo uses OpenCV R,t throughout. We accept either convention via min(no-flip, Z-flip).
+    """
+    pw = np.asarray(points_world, dtype=np.float32)
+    pc = np.asarray(points_camera, dtype=np.float32)
+    derived = world_to_camera(pw, camera)
+    err_direct = np.linalg.norm(derived - pc, axis=-1)
+    derived_opencv = derived.copy()
+    derived_opencv[..., 2] *= -1.0
+    err_flip = np.linalg.norm(derived_opencv - pc, axis=-1)
+    err = np.minimum(err_direct, err_flip)
+    return float(np.sqrt(np.mean(np.square(err))))
+

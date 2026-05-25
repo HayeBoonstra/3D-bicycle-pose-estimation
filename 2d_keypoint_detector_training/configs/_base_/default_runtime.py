@@ -24,8 +24,9 @@ custom_hooks = [
 
 # multi-processing backend
 env_cfg = dict(
-    cudnn_benchmark=False,
-    mp_cfg=dict(mp_start_method='fork', opencv_num_threads=0),
+    cudnn_benchmark=True,
+    # spawn avoids fork+CUDA issues; required for stable multi-GPU DataLoaders
+    mp_cfg=dict(mp_start_method='spawn', opencv_num_threads=0),
     dist_cfg=dict(backend='nccl'),
 )
 

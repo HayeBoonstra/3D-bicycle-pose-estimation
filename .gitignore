@@ -73,6 +73,9 @@ data/bicycle_pose_dataset/overlays/
 data/bicycle_pose_dataset/splits.json
 data/*
 
+1_full_detection_pipeline/input_sequence/
+1_full_detection_pipeline/output/
+
 # Logs and local data
 *.log
 MUJOCO_LOG.TXT

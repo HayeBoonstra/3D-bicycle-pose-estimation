@@ -43,6 +43,51 @@ def sanitize_bbox(bbox_xyxy: Iterable[float], width: int, height: int) -> list[f
     return [x1, y1, x2, y2]
 
 
+def bbox_xyxy_from_keypoints(
+    keypoints: np.ndarray,
+    image_size: tuple[int, int],
+    *,
+    confidence: np.ndarray | None = None,
+    margin_ratio: float = 0.1,
+    min_conf: float = 0.05,
+) -> list[float]:
+    """Tight xyxy bbox from visible keypoints with margin (matches COCO export)."""
+    width, height = image_size
+    kps = np.asarray(keypoints, dtype=np.float32)
+    if kps.ndim != 2 or kps.shape[1] < 2:
+        return [0.0, 0.0, float(width - 1), float(height - 1)]
+
+    if confidence is not None:
+        conf = np.asarray(confidence, dtype=np.float32).reshape(-1)
+        mask = conf >= min_conf
+        pts = kps[mask] if np.any(mask) else kps
+    else:
+        pts = kps
+
+    if pts.size == 0:
+        return [0.0, 0.0, float(width - 1), float(height - 1)]
+
+    x_min = float(np.min(pts[:, 0]))
+    x_max = float(np.max(pts[:, 0]))
+    y_min = float(np.min(pts[:, 1]))
+    y_max = float(np.max(pts[:, 1]))
+    bbox_w = max(1.0, x_max - x_min)
+    bbox_h = max(1.0, y_max - y_min)
+    margin_x = bbox_w * margin_ratio
+    margin_y = bbox_h * margin_ratio
+    x1 = max(0.0, x_min - margin_x)
+    y1 = max(0.0, y_min - margin_y)
+    x2 = min(float(width - 1), x_max + margin_x)
+    y2 = min(float(height - 1), y_max + margin_y)
+    return sanitize_bbox([x1, y1, x2, y2], width, height)
+
+
+def bbox_area_fraction(bbox_xyxy: Iterable[float], image_size: tuple[int, int]) -> float:
+    width, height = image_size
+    x1, y1, x2, y2 = [float(v) for v in bbox_xyxy]
+    return max(0.0, (x2 - x1) * (y2 - y1)) / max(1.0, float(width * height))
+
+
 def crop_and_resize(image: Image.Image, bbox_xyxy: Iterable[float], output_size: tuple[int, int]):
     width, height = image.size
     x1, y1, x2, y2 = sanitize_bbox(bbox_xyxy, width, height)

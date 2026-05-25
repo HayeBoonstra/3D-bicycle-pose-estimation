@@ -1,4 +1,8 @@
-"""Run the full detector -> 2D -> 3D -> world pipeline on an image sequence."""
+"""Run the full detector -> 2D -> 3D -> world pipeline on an image sequence.
+
+For multi-conda execution (rfdetr + mmpose + posemamba), use
+``1_full_detection_pipeline/run_full_pipeline.sh`` instead.
+"""
 
 from __future__ import annotations
 

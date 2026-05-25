@@ -20,7 +20,10 @@ if str(POSEMAMBA_ROOT) not in sys.path:
     sys.path.insert(0, str(POSEMAMBA_ROOT))
 
 from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX
+from keypoint_detector_pipeline.preprocess_roi import bbox_xyxy_from_keypoints
 from lib.utils.utils_data import split_clips
+
+DETECTED_2D_PREFIX = "keypoints_2d_detected_frame_"
 
 
 @dataclass
@@ -58,11 +61,41 @@ def _load_jsonl(path: Path) -> list[dict]:
     return rows
 
 
+def _posemamba_subdir_name(window_size: int, stride: int, dataset_tag: str | None) -> str:
+    name = f"PoseMamba_f{window_size}s{stride}"
+    if dataset_tag:
+        name += f"_{dataset_tag}"
+    return name
+
+
 def _sort_2d_frames(annotation_dir: Path) -> list[dict]:
     rows = []
     for path in sorted(annotation_dir.glob("keypoints_2d_frame_*.json")):
         rows.append(_load_json(path))
     return sorted(rows, key=lambda item: int(item["frame_index"]))
+
+
+def _sort_detected_frames(annotation_dir: Path) -> list[dict]:
+    rows = []
+    for path in sorted(annotation_dir.glob(f"{DETECTED_2D_PREFIX}*.json")):
+        rows.append(_load_json(path))
+    return sorted(rows, key=lambda item: int(item["frame_index"]))
+
+
+def _xywh_from_keypoints_row(row2d: dict) -> np.ndarray:
+    points = np.zeros((len(BICYCLE_KEYPOINT_NAMES), 2), dtype=np.float32)
+    conf = np.zeros((len(BICYCLE_KEYPOINT_NAMES),), dtype=np.float32)
+    for kp in row2d["keypoints"]:
+        j = KEYPOINT_INDEX[kp["name"]]
+        points[j] = [float(kp["x"]), float(kp["y"])]
+        conf[j] = float(kp.get("det_score", kp.get("v", 0)))
+    width = int(row2d.get("image_width", 0) or 0)
+    height = int(row2d.get("image_height", 0) or 0)
+    if width <= 0 or height <= 0:
+        width, height = 1280, 720
+    xyxy = bbox_xyxy_from_keypoints(points, (width, height), confidence=conf)
+    x1, y1, x2, y2 = xyxy
+    return np.asarray([x1, y1, x2 - x1, y2 - y1], dtype=np.float32)
 
 
 def _normalize_2d(points_2d: np.ndarray, bboxes_xywh: np.ndarray) -> np.ndarray:
@@ -76,19 +109,50 @@ def _assert_joint_order(names: list[str]) -> None:
         raise ValueError("Joint names do not match canonical bicycle keypoint order.")
 
 
-def _read_clip(clip_dir: Path) -> ClipData:
+def _read_clip(
+    clip_dir: Path,
+    *,
+    input_2d: str = "gt",
+    bbox_source: str = "gt",
+) -> ClipData:
     annotation_dir = clip_dir / "per_frame_annotations"
     k3d_path = clip_dir / "keypoints_3d.jsonl"
     camera_path = clip_dir / "camera.json"
     if not annotation_dir.exists() or not k3d_path.exists() or not camera_path.exists():
         raise FileNotFoundError(f"Clip missing required files: {clip_dir}")
 
-    frames2d = _sort_2d_frames(annotation_dir)
-    rows3d = sorted(_load_jsonl(k3d_path), key=lambda item: int(item["frame_index"]))
+    frames_gt = _sort_2d_frames(annotation_dir)
+    if input_2d == "detected":
+        frames2d = _sort_detected_frames(annotation_dir)
+        if not frames2d:
+            raise FileNotFoundError(
+                f"No detected 2D sidecars ({DETECTED_2D_PREFIX}*.json) in {annotation_dir}. "
+                "Run export_detected_2d.py first."
+            )
+        gt_by_index = {int(row["frame_index"]): row for row in frames_gt}
+        for row in frames2d:
+            idx = int(row["frame_index"])
+            if idx not in gt_by_index:
+                raise ValueError(f"Detected frame {idx} has no matching GT 2D in {clip_dir.name}")
+    else:
+        frames2d = frames_gt
+        gt_by_index = None
+
+    rows3d_all = sorted(_load_jsonl(k3d_path), key=lambda item: int(item["frame_index"]))
     camera = _load_json(camera_path)
 
-    if len(frames2d) != len(rows3d):
-        raise ValueError(f"Frame count mismatch in clip {clip_dir.name}: 2D={len(frames2d)} 3D={len(rows3d)}")
+    if input_2d == "detected":
+        det_indices = [int(row["frame_index"]) for row in frames2d]
+        rows3d_by_idx = {int(row["frame_index"]): row for row in rows3d_all}
+        missing_3d = [idx for idx in det_indices if idx not in rows3d_by_idx]
+        if missing_3d:
+            raise ValueError(f"Detected frames missing 3D rows in {clip_dir.name}: {missing_3d[:5]}")
+        rows3d = [rows3d_by_idx[idx] for idx in det_indices]
+        frames2d = sorted(frames2d, key=lambda item: int(item["frame_index"]))
+    else:
+        rows3d = rows3d_all
+        if len(frames2d) != len(rows3d):
+            raise ValueError(f"Frame count mismatch in clip {clip_dir.name}: 2D={len(frames2d)} 3D={len(rows3d)}")
 
     if rows3d and "joint_names" in rows3d[0]:
         _assert_joint_order(list(rows3d[0]["joint_names"]))
@@ -108,12 +172,36 @@ def _read_clip(clip_dir: Path) -> ClipData:
 
     for i, (row2d, row3d) in enumerate(zip(frames2d, rows3d)):
         frame_idx[i] = int(row2d["frame_index"])
-        bboxes[i] = np.asarray(row2d.get("gt_bbox_xywh", [0.0, 0.0, float(row2d["image_width"]), float(row2d["image_height"])]), dtype=np.float32)
+        gt_row = gt_by_index[int(row2d["frame_index"])] if gt_by_index is not None else row2d
+        if bbox_source == "gt":
+            bboxes[i] = np.asarray(
+                gt_row.get(
+                    "gt_bbox_xywh",
+                    [0.0, 0.0, float(gt_row.get("image_width", 0)), float(gt_row.get("image_height", 0))],
+                ),
+                dtype=np.float32,
+            )
+        elif bbox_source == "keypoints":
+            bboxes[i] = _xywh_from_keypoints_row(row2d)
+        elif bbox_source == "detection":
+            det_bbox = row2d.get("det_bbox_xyxy")
+            if det_bbox is None:
+                raise ValueError(
+                    f"bbox_source=detection requires det_bbox_xyxy in detected sidecar "
+                    f"(frame {frame_idx[i]} in {clip_dir.name})"
+                )
+            x1, y1, x2, y2 = [float(v) for v in det_bbox]
+            bboxes[i] = np.asarray([x1, y1, max(1.0, x2 - x1), max(1.0, y2 - y1)], dtype=np.float32)
+        else:
+            raise ValueError(f"Unknown bbox_source: {bbox_source}")
 
         for kp in row2d["keypoints"]:
             j = KEYPOINT_INDEX[kp["name"]]
             points_2d[i, j] = np.asarray([kp["x"], kp["y"]], dtype=np.float32)
-            conf_2d[i, j] = float(kp.get("v", 0)) / 2.0
+            if "det_score" in kp:
+                conf_2d[i, j] = float(kp["det_score"])
+            else:
+                conf_2d[i, j] = float(kp.get("v", 0)) / 2.0
 
         kps_world = row3d.get("kps_world", [])
         if len(kps_world) != J:
@@ -282,7 +370,10 @@ def build_sequences(args: argparse.Namespace) -> None:
     if not clip_dirs:
         raise RuntimeError(f"No clips with keypoints_3d.jsonl found in {raw_root}")
 
-    clips = [_read_clip(path) for path in clip_dirs]
+    clips = [
+        _read_clip(path, input_2d=args.input_2d, bbox_source=args.bbox_source)
+        for path in clip_dirs
+    ]
     split_map = _split_clip_ids([clip.clip_id for clip in clips], args.val_ratio, args.test_ratio, args.seed)
 
     split_stride = {
@@ -323,19 +414,34 @@ def build_sequences(args: argparse.Namespace) -> None:
         }
         np.savez_compressed(out_root / f"sequences_{split}.npz", **npz_payload)
 
-    posemamba_subset = out_root / f"PoseMamba_f{args.window_size}s{args.stride}" / "BICYCLE"
+    posemamba_name = _posemamba_subdir_name(args.window_size, args.stride, args.dataset_tag)
+    posemamba_subset = out_root / posemamba_name / "BICYCLE"
     _write_posemamba_split(split_samples["train"], posemamba_subset / "train", use_confidence=args.use_confidence)
     _write_posemamba_split(split_samples["val"], posemamba_subset / "val", use_confidence=args.use_confidence)
     _write_posemamba_split(split_samples["test"], posemamba_subset / "test", use_confidence=args.use_confidence)
 
     split_clip_counts = {k: len(v) for k, v in split_map.items()}
     window_counts = list(windows_per_source_clip.values())
+    input_2d_source = "gt_projection"
+    if args.input_2d == "detected":
+        if args.bbox_source == "detection":
+            input_2d_source = "rtmpose_detection_bbox"
+        elif args.bbox_source == "gt":
+            input_2d_source = "rtmpose_full_image"
+        else:
+            input_2d_source = "rtmpose_keypoint_bbox"
     manifest = {
         "joint_names": BICYCLE_KEYPOINT_NAMES,
         "window_size": args.window_size,
         "stride_train": args.stride,
         "stride_val_test": args.eval_stride,
         "slice_style": args.slice_style,
+        "raw_root": str(raw_root.resolve()),
+        "dataset_tag": args.dataset_tag,
+        "input_2d": args.input_2d,
+        "input_2d_source": input_2d_source,
+        "bbox_source": args.bbox_source,
+        "posemamba_subdir": posemamba_name,
         "note": (
             "Offline stride matches PoseMamba convert_h36m (contiguous [st:st+T), st+=stride). "
             "YAML data_stride is inert for bicycle training (pre-sliced pickles). "
@@ -360,8 +466,7 @@ def build_sequences(args: argparse.Namespace) -> None:
     }
     with (out_root / "meta.json").open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
-    posemamba_subset = out_root / f"PoseMamba_f{args.window_size}s{args.stride}"
-    with (posemamba_subset / "dataset_manifest.json").open("w", encoding="utf-8") as f:
+    with (out_root / posemamba_name / "dataset_manifest.json").open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
 
     run_qa(out_root)
@@ -416,6 +521,26 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--test-ratio", type=float, default=0.1)
     parser.add_argument("--use-confidence", action="store_true")
     parser.add_argument("--qa-only", action="store_true")
+    parser.add_argument(
+        "--input-2d",
+        choices=("gt", "detected"),
+        default="gt",
+        help="gt: projected 2D from annotations; detected: RTMPose sidecar JSON.",
+    )
+    parser.add_argument(
+        "--bbox-source",
+        choices=("gt", "keypoints", "detection"),
+        default="gt",
+        help=(
+            "Normalization bbox: gt_bbox_xywh, tight keypoint box, or RF-DETR det_bbox_xyxy "
+            "from detected sidecars (use detection with --input-2d detected for full pipeline match)."
+        ),
+    )
+    parser.add_argument(
+        "--dataset-tag",
+        default=None,
+        help="Optional suffix on PoseMamba_f{W}s{S} folder (e.g. detected2d).",
+    )
     return parser.parse_args()
 
 

@@ -26,6 +26,7 @@ import bpy
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BLENDER_FILES_DIR = REPO_ROOT / "Blender files"
 RANDOMIZE_CAMERA_SCRIPT = BLENDER_FILES_DIR / "randomize_camera.py"
+TRACK_CAMERA_SCRIPT = BLENDER_FILES_DIR / "track_camera_to_target.py"
 RANDOMIZE_LIGHTING_SCRIPT = BLENDER_FILES_DIR / "randomize_lighting_strength.py"
 RANDOMIZE_FOG_SCRIPT = BLENDER_FILES_DIR / "randomize_fog.py"
 EXPORT_SCRIPT = BLENDER_FILES_DIR / "extract_2D_annotation.py"
@@ -67,6 +68,52 @@ def _parse_args() -> argparse.Namespace:
         default=True,
         help="Suppress non-essential render logs (use --no-quiet-mode to enable).",
     )
+    parser.add_argument(
+        "--camera-min-distance",
+        type=float,
+        default=float(os.environ.get("CAMERA_MIN_DISTANCE", "4.0")),
+        help="Minimum camera distance (m); also enforces motion-aware fit for RTMPose.",
+    )
+    parser.add_argument(
+        "--camera-max-distance",
+        type=float,
+        default=float(os.environ.get("CAMERA_MAX_DISTANCE", "12.0")),
+        help="Maximum camera distance (m). Keep moderate so the bike is not tiny in frame.",
+    )
+    parser.add_argument(
+        "--camera-min-bbox-area-frac",
+        type=float,
+        default=float(os.environ.get("CAMERA_MIN_BBOX_AREA_FRAC", "0.04")),
+        help="Reject poses where projected keypoint bbox area is below this image fraction.",
+    )
+    parser.add_argument(
+        "--camera-max-bbox-area-frac",
+        type=float,
+        default=float(os.environ.get("CAMERA_MAX_BBOX_AREA_FRAC", "0.80")),
+        help="Reject poses where the bike fills more than this fraction (too zoomed in).",
+    )
+    parser.add_argument(
+        "--camera-min-visible-keypoints",
+        type=int,
+        default=int(os.environ.get("CAMERA_MIN_VISIBLE_KEYPOINTS", "14")),
+    )
+    parser.add_argument(
+        "--camera-min-visible-frame-ratio",
+        type=float,
+        default=float(os.environ.get("CAMERA_MIN_VISIBLE_FRAME_RATIO", "0.9")),
+    )
+    parser.add_argument(
+        "--camera-fit-margin",
+        type=float,
+        default=float(os.environ.get("CAMERA_FIT_MARGIN", "1.25")),
+        help="Scale motion radius when computing minimum camera distance.",
+    )
+    parser.add_argument(
+        "--camera-mode",
+        choices=("track", "fixed"),
+        default=os.environ.get("CAMERA_MODE", "track"),
+        help="track: camera follows bicycle each frame; fixed: legacy world-fixed camera.",
+    )
     return parser.parse_args(_argv_after_double_dash())
 
 
@@ -79,6 +126,15 @@ def _set_env(args: argparse.Namespace, output_dir: Path) -> None:
     os.environ["RAW_RENDERS_DIR"] = str(output_dir)
     os.environ["BIKE_TAG"] = args.bike
     os.environ["RIDER_TAG"] = args.rider
+    os.environ["CAMERA_SYNC_WINDOW_SIZE"] = str(args.sync_window_size)
+    os.environ["CAMERA_MIN_DISTANCE"] = str(args.camera_min_distance)
+    os.environ["CAMERA_MAX_DISTANCE"] = str(args.camera_max_distance)
+    os.environ["CAMERA_MIN_BBOX_AREA_FRAC"] = str(args.camera_min_bbox_area_frac)
+    os.environ["CAMERA_MAX_BBOX_AREA_FRAC"] = str(args.camera_max_bbox_area_frac)
+    os.environ["CAMERA_MIN_VISIBLE_KEYPOINTS"] = str(args.camera_min_visible_keypoints)
+    os.environ["CAMERA_MIN_VISIBLE_FRAME_RATIO"] = str(args.camera_min_visible_frame_ratio)
+    os.environ["CAMERA_FIT_MARGIN"] = str(args.camera_fit_margin)
+    os.environ["CAMERA_MODE"] = str(args.camera_mode)
 
 
 def _configure_scene(args: argparse.Namespace, output_dir: Path) -> None:
@@ -244,6 +300,8 @@ def main() -> None:
     _run_blender_script(RANDOMIZE_LIGHTING_SCRIPT, args.quiet_mode)
     _run_blender_script(RANDOMIZE_FOG_SCRIPT, args.quiet_mode)
     _synchronize_frame_window(args)
+    if args.camera_mode == "track":
+        _run_blender_script(TRACK_CAMERA_SCRIPT, args.quiet_mode)
     if not args.quiet_mode:
         print("[render_clip] rendering frames...")
     with _silence_stdout_stderr() as terminal_fd:

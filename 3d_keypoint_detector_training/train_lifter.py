@@ -95,6 +95,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--window-size", type=int, default=243)
     parser.add_argument("--stride", type=int, default=81)
+    parser.add_argument(
+        "--dataset-tag",
+        default=None,
+        help="Match build_sequences --dataset-tag (e.g. detected2d).",
+    )
     parser.add_argument("--subset-name", default="BICYCLE")
     parser.add_argument(
         "--checkpoint-dir",
@@ -108,7 +113,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num-joints", type=int, default=18)
     parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--dim-feat", type=int, default=128)
+    parser.add_argument("--dim-feat", type=int, default=64)
     parser.add_argument("--checkpoint-frequency", type=int, default=30)
     parser.add_argument("--no-flip", action="store_true")
     parser.add_argument("--epochs", type=int, default=120)
@@ -126,7 +131,12 @@ def main() -> None:
     checkpoint_dir = args.checkpoint_dir.resolve()
     noise_sigma = 0.02 if args.noise_2d else 0.0
 
-    posemamba_data_root = (args.sequence_root / f"PoseMamba_f{args.window_size}s{args.stride}").resolve()
+    subdir = f"PoseMamba_f{args.window_size}s{args.stride}"
+    if args.dataset_tag:
+        subdir += f"_{args.dataset_tag}"
+    posemamba_data_root = (args.sequence_root / subdir).resolve()
+    if not posemamba_data_root.is_dir():
+        raise SystemExit(f"error: PoseMamba data_root not found: {posemamba_data_root}")
     _write_config(
         output_path=config_path,
         data_root=posemamba_data_root,

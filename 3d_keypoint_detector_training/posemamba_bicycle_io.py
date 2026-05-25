@@ -18,7 +18,7 @@ BICYCLE_GENERATED_CONFIG = (
     _REPO_ROOT / "3d_keypoint_detector_training" / "PoseMamba_train_bicycle.generated.yaml"
 )
 # Set after training: checkpoints/posemamba_bicycle/<timestamp>/best_epoch.bin
-TIMESTAMP = "2026_05_19_T_06_11_25"
+TIMESTAMP = "2026_05_24_T_16_14_08"
 DEFAULT_CHECKPOINT_DIR = _REPO_ROOT / "checkpoints" / f"posemamba_bicycle_{TIMESTAMP}"
 DEFAULT_CHECKPOINT = DEFAULT_CHECKPOINT_DIR / "best_epoch.bin"
 

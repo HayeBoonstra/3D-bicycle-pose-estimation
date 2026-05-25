@@ -169,26 +169,26 @@ def update_camera(viewer, data):
 i = 0
 target_velocity = 15 / 3.6
 data.qvel[0] = target_velocity
-# zigzag_path = np.concatenate((
-#     np.zeros(100),
-#     np.linspace(0,90, 400),
-#     np.linspace(90, -90, 800),
-#     np.linspace(-90, 0, 400),
-#     np.zeros(100)
-# ))
+zigzag_path = np.concatenate((
+    np.zeros(100),
+    np.linspace(0,90, 400),
+    np.linspace(90, -90, 800),
+    np.linspace(-90, 0, 400),
+    np.zeros(100)
+))
 # angle_array = zigzag_path
 
-# circular_path = np.linspace(0, 2 * np.pi, 2000)
+circular_path = np.linspace(0, 2 * np.pi, 2000)
 # angle_array = np.rad2deg(circular_path)
 
-# straight_path = np.zeros(2000)
+straight_path = np.zeros(2000)
 # angle_array = straight_path
 
 ## hard right_turn path
 hard_right_turn_path = np.linspace(0, -180, 400)
 hard_right_turn_path = np.concatenate((hard_right_turn_path, np.full(250, -180)))
 
-angle_array = hard_right_turn_path
+angle_array = np.concatenate((zigzag_path, hard_right_turn_path))
 
 next_display_time = time.perf_counter()
 next_physics_time = time.perf_counter()

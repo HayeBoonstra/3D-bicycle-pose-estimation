@@ -16,6 +16,48 @@ from scene_registry import DEFAULT_REGISTRY_PATH, load_scene_registry, sample_sc
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_RAW_RENDERS_DIR = REPO_ROOT / "raw_renders"
 RENDER_CLIP_SCRIPT = Path(__file__).resolve().parent / "render_clip.py"
+_OMP_THREAD_VARS = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+)
+
+
+def _cpu_count() -> int:
+    return max(1, os.cpu_count() or 1)
+
+
+def _resolve_blender_threads(parallel_jobs: int, explicit: int | None) -> int:
+    """Blender -t value: 0 = use all logical CPUs; otherwise an explicit cap."""
+    if explicit is not None:
+        return max(0, explicit)
+    if parallel_jobs <= 1:
+        return 0
+    return max(1, _cpu_count() // parallel_jobs)
+
+
+def _subprocess_env_for_threads(blender_threads: int) -> dict[str, str]:
+    """Align OpenMP/BLAS libraries with Blender's thread budget."""
+    env = os.environ.copy()
+    thread_budget = _cpu_count() if blender_threads == 0 else blender_threads
+    thread_str = str(thread_budget)
+    for key in _OMP_THREAD_VARS:
+        env[key] = thread_str
+    return env
+
+
+def _describe_thread_plan(parallel_jobs: int, blender_threads: int) -> str:
+    cpus = _cpu_count()
+    if blender_threads == 0:
+        per_proc = f"all {cpus} CPUs"
+    else:
+        per_proc = f"{blender_threads} thread(s)"
+    if parallel_jobs <= 1:
+        return f"sequential clips, Blender {per_proc}"
+    total = blender_threads * parallel_jobs if blender_threads > 0 else cpus
+    return f"{parallel_jobs} parallel Blender process(es), {per_proc} each (~{total} CPUs requested)"
 
 
 def _parse_args() -> argparse.Namespace:
@@ -40,10 +82,63 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--jobs",
         type=int,
-        default=max(1, os.cpu_count() or 1),
-        help="Maximum number of clips to render in parallel.",
+        default=1,
+        help=(
+            "Maximum number of clips to render in parallel (default: 1). "
+            "With --jobs 1, each Blender uses all CPU cores; with --jobs N>1, cores are split across processes."
+        ),
+    )
+    parser.add_argument(
+        "--blender-threads",
+        type=int,
+        default=None,
+        metavar="N",
+        help=(
+            "Blender -t thread count per process (0 = all logical CPUs). "
+            "Default: 0 when --jobs 1, else max(1, cpu_count // jobs)."
+        ),
     )
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument(
+        "--camera-min-distance",
+        type=float,
+        default=float(os.environ.get("CAMERA_MIN_DISTANCE", "4.0")),
+    )
+    parser.add_argument(
+        "--camera-max-distance",
+        type=float,
+        default=float(os.environ.get("CAMERA_MAX_DISTANCE", "12.0")),
+    )
+    parser.add_argument(
+        "--camera-min-bbox-area-frac",
+        type=float,
+        default=float(os.environ.get("CAMERA_MIN_BBOX_AREA_FRAC", "0.04")),
+    )
+    parser.add_argument(
+        "--camera-max-bbox-area-frac",
+        type=float,
+        default=float(os.environ.get("CAMERA_MAX_BBOX_AREA_FRAC", "0.80")),
+    )
+    parser.add_argument(
+        "--camera-min-visible-keypoints",
+        type=int,
+        default=int(os.environ.get("CAMERA_MIN_VISIBLE_KEYPOINTS", "14")),
+    )
+    parser.add_argument(
+        "--camera-min-visible-frame-ratio",
+        type=float,
+        default=float(os.environ.get("CAMERA_MIN_VISIBLE_FRAME_RATIO", "0.9")),
+    )
+    parser.add_argument(
+        "--camera-fit-margin",
+        type=float,
+        default=float(os.environ.get("CAMERA_FIT_MARGIN", "1.25")),
+    )
+    parser.add_argument(
+        "--camera-mode",
+        choices=("track", "fixed"),
+        default=os.environ.get("CAMERA_MODE", "track"),
+    )
     return parser.parse_args()
 
 
@@ -56,6 +151,8 @@ def _render_command(args: argparse.Namespace, entry, camera_seed: int, clip_dir:
         args.blender,
         "--background",
         str(entry.blend_path),
+        "-t",
+        str(args.blender_threads),
         "--python",
         str(RENDER_CLIP_SCRIPT),
         "--",
@@ -89,6 +186,26 @@ def _render_command(args: argparse.Namespace, entry, camera_seed: int, clip_dir:
         command.append("--encode-video")
     if args.no_sync_camera_window:
         command.append("--no-sync-camera-window")
+    command.extend(
+        [
+            "--camera-min-distance",
+            str(args.camera_min_distance),
+            "--camera-max-distance",
+            str(args.camera_max_distance),
+            "--camera-min-bbox-area-frac",
+            str(args.camera_min_bbox_area_frac),
+            "--camera-max-bbox-area-frac",
+            str(args.camera_max_bbox_area_frac),
+            "--camera-min-visible-keypoints",
+            str(args.camera_min_visible_keypoints),
+            "--camera-min-visible-frame-ratio",
+            str(args.camera_min_visible_frame_ratio),
+            "--camera-fit-margin",
+            str(args.camera_fit_margin),
+            "--camera-mode",
+            str(args.camera_mode),
+        ]
+    )
     return command
 
 
@@ -118,7 +235,7 @@ def _render_one(
 ) -> None:
     command = _render_command(args, entry, camera_seed, clip_dir)
     print(f"[batch_render] rendering {clip_dir.name} from scene {entry.id}")
-    subprocess.run(command, check=True)
+    subprocess.run(command, check=True, env=_subprocess_env_for_threads(args.blender_threads))
     _validate_clip_outputs(clip_dir)
 
 
@@ -151,6 +268,9 @@ def main() -> None:
 
     entries = load_scene_registry(args.registry)
     sampled = sample_scenes(entries, args.num_clips, args.seed)
+    print(f"[batch_render] batch_seed={args.seed} planned clips:")
+    for entry, camera_seed in sampled:
+        print(f"  - scene={entry.id} camera_seed={camera_seed} -> clip_{entry.id}_{camera_seed:08d}")
     rows_by_clip_id: dict[str, dict[str, str]] = {}
     render_tasks: list[tuple] = []
 
@@ -186,6 +306,8 @@ def main() -> None:
     _write_manifest(manifest_path, list(rows_by_clip_id.values()))
 
     max_workers = min(args.jobs, len(render_tasks))
+    args.blender_threads = _resolve_blender_threads(max_workers, args.blender_threads)
+    print(f"[batch_render] {_describe_thread_plan(max_workers, args.blender_threads)}")
     if max_workers > 0:
         total_to_render = len(render_tasks)
         completed = 0

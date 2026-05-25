@@ -42,7 +42,7 @@ scenes:
     blend: "quattro_canti_scene.blend"
     bike: Swapfiets
     rider: Josh
-    frame_range: [0, 190]
+    frame_range: [0, 736]
     camera_target: k_handlebar_middle
     weight: 1.0
     notes: "Hand-authored scene; update bike/rider/notes when finalized."

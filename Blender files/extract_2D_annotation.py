@@ -94,10 +94,27 @@ def _camera_extrinsics(cam):
     }
 
 
+def _camera_payload_for_frame(scene, cam, width, height):
+    return {
+        "camera": cam.name,
+        "image_size": [width, height],
+        "fps": int(scene.render.fps),
+        **_camera_extrinsics(cam),
+        **_camera_intrinsics(scene, cam, width, height),
+        "projection_model": "opencv_pinhole",
+    }
+
+
 def _world_to_camera_point(cam, world_point):
     world_to_camera = cam.matrix_world.inverted()
     camera_point = world_to_camera @ world_point
     return [float(camera_point.x), float(camera_point.y), float(camera_point.z)]
+
+
+def _opencv_camera_point(cam, world_point):
+    """OpenCV camera coords (Z>0 in front); Blender camera space uses Z<0 in front."""
+    x, y, z = _world_to_camera_point(cam, world_point)
+    return [x, y, -z]
 
 
 def _world_background_strength(scene):
@@ -245,13 +262,13 @@ def export_annotations():
     render_config = _metadata_from_env(scene, clip_id, out_root)
     render_config["missing_keypoints"] = missing
 
-    camera_payload = {
-        "camera": cam.name,
-        "image_size": [width, height],
-        "fps": int(scene.render.fps),
-        **_camera_extrinsics(cam),
-        **_camera_intrinsics(scene, cam, width, height),
-    }
+    # Legacy single-file camera (first exported frame). Per-frame K/R/t live in keypoints_3d.jsonl.
+    scene.frame_set(start_frame)
+    bpy.context.view_layer.update()
+    camera_payload = _camera_payload_for_frame(scene, cam, width, height)
+    camera_payload["note"] = (
+        "Static snapshot at clip frame_start; tracking cameras use per-frame K/R/t in keypoints_3d.jsonl."
+    )
 
     with (out_root / "camera.json").open("w", encoding="utf-8") as f:
         json.dump(camera_payload, f, indent=2)
@@ -275,6 +292,7 @@ def export_annotations():
                 "image_file": str(Path("frames") / f"frame_{frame:04d}.png"),
                 "keypoints": [],
             }
+            frame_camera = _camera_payload_for_frame(scene, cam, width, height)
             keypoints_3d = {
                 "clip_id": clip_id,
                 "scene_id": render_config["scene_id"],
@@ -283,6 +301,9 @@ def export_annotations():
                 "timestamp_sec": float((frame - start_frame) / max(1, int(scene.render.fps))),
                 "fps": int(scene.render.fps),
                 "camera_name": cam.name,
+                "K": frame_camera["K"],
+                "R": frame_camera["R"],
+                "t": frame_camera["t"],
                 "coord_frames": {
                     "world": "blender_world_xyz_meters",
                     "camera": "opencv_camera_xyz_meters",
@@ -326,7 +347,7 @@ def export_annotations():
 
                 obj_eval = obj.evaluated_get(depsgraph)
                 world_co = obj_eval.matrix_world.translation
-                camera_xyz = _world_to_camera_point(cam, world_co)
+                camera_xyz = _opencv_camera_point(cam, world_co)
                 co_ndc = world_to_camera_view(scene, cam, world_co)
                 x_px = co_ndc.x * width
                 y_px = (1.0 - co_ndc.y) * height

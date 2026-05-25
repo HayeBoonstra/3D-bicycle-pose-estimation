@@ -40,6 +40,9 @@ Options:
   --encode-video           Encode MP4 during render + overlay stage
   --skip-visualize         Skip visualize_coco stage
   -h, --help               Show this help
+
+PoseMamba detected-2D corpus (Blender, >=729 frames/clip, RTMPose sidecars):
+  generate_blender_posemamba_dataset.sh  (see 3d_keypoint_detector_training/README.md)
 EOF
 }
 

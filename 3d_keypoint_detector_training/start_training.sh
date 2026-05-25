@@ -14,12 +14,13 @@ EPOCHS="${EPOCHS:-120}"
 DIM_FEAT="${DIM_FEAT:-64}"
 CHECKPOINT_FREQUENCY="${CHECKPOINT_FREQUENCY:-10}"
 NOISE_2D="${NOISE_2D:-0}"
+DATASET_TAG="${DATASET_TAG:-}"
 
 RUN_ARGS=(
   "${REPO_ROOT}/3d_keypoint_detector_training/train_lifter.py"
   --conda-env posemamba
   --posemamba-root "${REPO_ROOT}/PoseMamba"
-  --sequence-root "${REPO_ROOT}/data/posemamba_training_sequences"
+  --sequence-root "/mnt/SmallSSD/3D-bicycle-pose-estimation/posemamba_training_sequences"
   --window-size "${WINDOW_SIZE}"
   --stride "${STRIDE}"
   --batch-size "${BATCH_SIZE}"
@@ -32,8 +33,14 @@ RUN_ARGS=(
 if [[ "${NOISE_2D}" == "1" ]]; then
   RUN_ARGS+=(--noise-2d)
 fi
+if [[ -n "${DATASET_TAG}" ]]; then
+  RUN_ARGS+=(--dataset-tag "${DATASET_TAG}")
+fi
 
 echo "[train] BICYCLE training uses data_input only (gt_2d disabled in dataset)." >&2
+if [[ -n "${DATASET_TAG}" ]]; then
+  echo "[train] dataset tag: ${DATASET_TAG} (e.g. detected2d = RTMPose 2D + GT bbox)" >&2
+fi
 echo "[train] For a clean image-2D model, start without resuming old posemamba_gpu_run_* checkpoints." >&2
 
 RESUME_FROM="${1:-${RESUME_CHECKPOINT:-}}"

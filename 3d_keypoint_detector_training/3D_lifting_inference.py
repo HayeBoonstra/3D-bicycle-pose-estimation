@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import pickle
 import subprocess
 import sys
 import time
@@ -23,19 +21,17 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import torch
-import torch.nn as nn
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
+from lift_from_2d_array import lift_2d_to_3d, load_posemamba_lifter, squeeze_batch
 from posemamba_bicycle_io import (
     DEFAULT_CHECKPOINT,
     Input2DMode,
     Noise2DConfig,
     load_sequence_pkl,
-    load_training_config,
     mpjpe_eval,
     prepare_2d,
     prepare_gt_3d,
@@ -96,66 +92,19 @@ def _collect_input_files(path: Path) -> list[Path]:
     raise FileNotFoundError(f"Input path does not exist: {path}")
 
 
-def _load_model() -> tuple[Any, Any, torch.device]:
-    ckpt_path = CHECKPOINT_PATH.resolve()
-    fallback_cfg = CONFIG_PATH.resolve()
-    posemamba_root = POSEMAMBA_ROOT.resolve()
-
-    if not ckpt_path.is_file():
-        raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
-    if not posemamba_root.is_dir():
-        raise FileNotFoundError(f"PoseMamba root not found: {posemamba_root}")
-
-    os.chdir(posemamba_root)
-    if str(posemamba_root) not in sys.path:
-        sys.path.insert(0, str(posemamba_root))
-
-    from lib.utils.learning import load_backbone
-
-    cfg = load_training_config(ckpt_path, fallback_cfg)
-    if MODEL_DEPTH_OVERRIDE is not None:
-        cfg.depth = MODEL_DEPTH_OVERRIDE
-    if MODEL_DIM_FEAT_OVERRIDE is not None:
-        cfg.dim_feat = MODEL_DIM_FEAT_OVERRIDE
-    if MODEL_MAXLEN_OVERRIDE is not None:
-        cfg.maxlen = MODEL_MAXLEN_OVERRIDE
-        cfg.clip_len = MODEL_MAXLEN_OVERRIDE
-
-    model = load_backbone(cfg)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    if torch.cuda.is_available():
-        model = nn.DataParallel(model).cuda()
-    else:
-        model = model.to(device)
-
-    checkpoint = torch.load(str(ckpt_path), map_location=device)
-    state = checkpoint["model_pos"]
-    if not torch.cuda.is_available():
-        state = {k[7:] if k.startswith("module.") else k: v for k, v in state.items()}
-    model.load_state_dict(state, strict=True)
-    model.eval()
-    return model, cfg, device
+def _load_model():
+    return load_posemamba_lifter(
+        CHECKPOINT_PATH,
+        fallback_config=CONFIG_PATH,
+        posemamba_root=POSEMAMBA_ROOT,
+        depth_override=MODEL_DEPTH_OVERRIDE,
+        dim_feat_override=MODEL_DIM_FEAT_OVERRIDE,
+        maxlen_override=MODEL_MAXLEN_OVERRIDE,
+    )
 
 
 def _resolve_input_mode() -> Input2DMode:
     return Input2DMode(INPUT_2D_MODE)
-
-
-def _run_inference(model: Any, cfg: Any, device: torch.device, input_2d: np.ndarray) -> np.ndarray:
-    tensor_in = torch.from_numpy(input_2d).to(device)
-    run_in = tensor_in[:, :, :, :2] if cfg.no_conf else tensor_in
-
-    with torch.no_grad():
-        pred = model(run_in)
-        if cfg.rootrel:
-            pred[:, :, 0, :] = 0
-    return pred.detach().cpu().numpy()
-
-
-def _squeeze_single_sequence(arr: np.ndarray) -> np.ndarray:
-    if arr.ndim == 4 and arr.shape[0] == 1:
-        return arr[0]
-    return arr
 
 
 def _render_video(npz_path: Path, out_dir: Path) -> None:
@@ -222,9 +171,9 @@ def main() -> None:
         )
         input_2d = to_batch_2d(motion_2d)
         print(f"[{i}/{len(files)}] Lifting shape {tuple(input_2d.shape)}...", flush=True)
-        pred_3d = _run_inference(model, cfg, device, input_2d)
+        pred_3d = lift_2d_to_3d(model, cfg, device, input_2d)
 
-        pred_sq = _squeeze_single_sequence(pred_3d)
+        pred_sq = squeeze_batch(pred_3d)
         save_payload: dict[str, Any] = {
             "pred": pred_sq,
             "data_input": _squeeze_single_sequence(input_2d),
