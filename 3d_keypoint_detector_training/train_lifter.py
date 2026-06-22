@@ -4,12 +4,55 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import subprocess
 from pathlib import Path
 
 import yaml
 
 GENERATED_CONFIG_NAME = "PoseMamba_train_bicycle.generated.yaml"
+_RUN_DIR_RE = re.compile(r"^run_(\d+)$")
+_EXPERIMENT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def sanitize_experiment_name(name: str) -> str:
+    cleaned = name.strip().replace(" ", "_")
+    if not cleaned or not _EXPERIMENT_NAME_RE.match(cleaned):
+        raise SystemExit(
+            "error: experiment name must start with a letter or digit and contain only "
+            "letters, digits, underscore, dot, or hyphen"
+        )
+    return cleaned
+
+
+def allocate_run_checkpoint_dir(checkpoint_base: Path) -> Path:
+    """Next numbered run under checkpoint_base (run_001, run_002, ...)."""
+    checkpoint_base.mkdir(parents=True, exist_ok=True)
+    max_n = 0
+    for child in checkpoint_base.iterdir():
+        if not child.is_dir():
+            continue
+        match = _RUN_DIR_RE.match(child.name)
+        if match:
+            max_n = max(max_n, int(match.group(1)))
+    return checkpoint_base / f"run_{max_n + 1:03d}"
+
+
+def resolve_run_checkpoint_dir(
+    checkpoint_base: Path,
+    experiment_name: str | None,
+) -> Path:
+    if experiment_name:
+        run_dir = checkpoint_base / sanitize_experiment_name(experiment_name)
+        if run_dir.exists():
+            raise SystemExit(
+                f"error: experiment directory already exists: {run_dir}\n"
+                "  Resume with: ./3d_keypoint_detector_training/start_training.sh "
+                f"{run_dir}/latest_epoch.bin"
+            )
+        run_dir.mkdir(parents=True, exist_ok=False)
+        return run_dir
+    return allocate_run_checkpoint_dir(checkpoint_base)
 
 
 def _write_config(
@@ -26,8 +69,13 @@ def _write_config(
     no_eval: bool,
     max_eval_batches: int,
     dim_feat: int,
+    depth: int,
     flip: bool,
     checkpoint_frequency: int,
+    lambda_steer: float,
+    lambda_steer_velocity: float,
+    lambda_roll: float,
+    lambda_roll_velocity: float,
 ) -> None:
     cfg = {
         "train_2d": False,
@@ -45,7 +93,7 @@ def _write_config(
         "maxlen": clip_len,
         "dim_feat": dim_feat,
         "mlp_ratio": 2,
-        "depth": 10,
+        "depth": depth,
         "att_fuse": True,
         "data_root": str(data_root),
         "subset_list": [subset_name],
@@ -69,6 +117,10 @@ def _write_config(
         "lambda_3dw": 0.0,
         "lambda_3d": 1.0,
         "lambda_diff": 0.5,
+        "lambda_steer": lambda_steer,
+        "lambda_steer_velocity": lambda_steer_velocity,
+        "lambda_roll": lambda_roll,
+        "lambda_roll_velocity": lambda_roll_velocity,
         "flip": flip,
         "mask_ratio": 0.0,
         "mask_T_ratio": 0.0,
@@ -104,7 +156,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint-dir",
         type=Path,
-        default=Path("checkpoints/posemamba_bicycle"),
+        default=Path("posemamba_weights"),
+    )
+    parser.add_argument(
+        "--experiment-name",
+        default=None,
+        help=(
+            "Named folder under --checkpoint-dir (e.g. posemamba_s_roll_loss). "
+            "Default: auto-increment run_001, run_002, ..."
+        ),
     )
     parser.add_argument(
         "--generated-config",
@@ -114,6 +174,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-joints", type=int, default=18)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--dim-feat", type=int, default=64)
+    parser.add_argument(
+        "--depth",
+        type=int,
+        default=10,
+        help=(
+            "Number of STE/TTE block pairs in PoseMamba (each pair is one spatial + one "
+            "temporal BiSTSSM). Paper layer count N = 2 * depth (e.g. depth 10 -> N=20 for S/B)."
+        ),
+    )
     parser.add_argument("--checkpoint-frequency", type=int, default=30)
     parser.add_argument("--no-flip", action="store_true")
     parser.add_argument("--epochs", type=int, default=120)
@@ -121,6 +190,30 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-eval", action="store_true")
     parser.add_argument("--max-eval-batches", type=int, default=0)
     parser.add_argument("--resume", type=Path, default=None)
+    parser.add_argument(
+        "--lambda-steer",
+        type=float,
+        default=0.0,
+        help="Weight on L1 steer-angle error (radians) between pred and GT 3D keypoints.",
+    )
+    parser.add_argument(
+        "--lambda-steer-velocity",
+        type=float,
+        default=0.0,
+        help="Weight on L1 steer-angle velocity error (rad/frame).",
+    )
+    parser.add_argument(
+        "--lambda-roll",
+        type=float,
+        default=0.0,
+        help="Weight on L1 roll-angle error (radians) in camera frame between pred and GT 3D.",
+    )
+    parser.add_argument(
+        "--lambda-roll-velocity",
+        type=float,
+        default=0.0,
+        help="Weight on L1 roll-angle velocity error (rad/frame).",
+    )
     return parser.parse_args()
 
 
@@ -151,11 +244,23 @@ def main() -> None:
         no_eval=args.no_eval,
         max_eval_batches=args.max_eval_batches,
         dim_feat=args.dim_feat,
+        depth=args.depth,
         flip=not args.no_flip,
         checkpoint_frequency=args.checkpoint_frequency,
+        lambda_steer=args.lambda_steer,
+        lambda_steer_velocity=args.lambda_steer_velocity,
+        lambda_roll=args.lambda_roll,
+        lambda_roll_velocity=args.lambda_roll_velocity,
     )
 
-    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    if args.resume is not None:
+        run_checkpoint_dir = args.resume.expanduser().resolve().parent
+    else:
+        run_checkpoint_dir = resolve_run_checkpoint_dir(
+            checkpoint_dir, args.experiment_name
+        )
+    print(f"[train_lifter] checkpoint run dir: {run_checkpoint_dir}", flush=True)
+
     in_target_env = os.environ.get("CONDA_DEFAULT_ENV") == args.conda_env
     cmd = []
     if not in_target_env:
@@ -167,7 +272,7 @@ def main() -> None:
             "--config",
             str(config_path),
             "--checkpoint",
-            str(checkpoint_dir),
+            str(run_checkpoint_dir),
         ]
     )
     if args.resume is not None:
@@ -178,10 +283,11 @@ def main() -> None:
             raise SystemExit(
                 f"error: --resume must be a PoseMamba checkpoint (.bin), got: {resume_path}\n"
                 "  Example: ./3d_keypoint_detector_training/start_training.sh "
-                "checkpoints/posemamba_bicycle/<run>/latest_epoch.bin"
+                "posemamba_weights/<run>/latest_epoch.bin"
             )
         cmd.extend(["-r", str(resume_path)])
     env = os.environ.copy()
+    env["POSEMAMBA_CHECKPOINT_RUN_DIR"] = str(run_checkpoint_dir)
     for name in ("_PYTHON_SYSCONFIGDATA_NAME", "CC", "CXX", "CUDAHOSTCXX"):
         env.pop(name, None)
     subprocess.run(cmd, check=True, cwd=args.posemamba_root, env=env)

@@ -169,6 +169,19 @@ def load_scene_registry(
     return entries
 
 
+def scene_counts_for_registry(
+    entries: list[SceneEntry],
+    prior_counts: dict[str, int] | None = None,
+) -> dict[str, int]:
+    """Per-scene clip counts, zero-filled for every registry scene."""
+    counts = {entry.id: 0 for entry in entries}
+    if prior_counts:
+        for scene_id, value in prior_counts.items():
+            if scene_id in counts:
+                counts[scene_id] = max(0, int(value))
+    return counts
+
+
 def sample_scenes(
     entries: list[SceneEntry],
     count: int,
@@ -186,18 +199,63 @@ def sample_scenes(
     return sampled
 
 
+def sample_scenes_balanced(
+    entries: list[SceneEntry],
+    count: int,
+    seed: int,
+    *,
+    prior_counts: dict[str, int] | None = None,
+) -> list[tuple[SceneEntry, int]]:
+    """Pick scenes so total counts (prior + new) stay as even as possible.
+
+    Each new clip goes to a registry scene with the current minimum count;
+    ties are broken randomly (deterministic for a fixed ``seed``).
+    """
+    if count < 1:
+        raise ValueError("count must be >= 1")
+    rng = random.Random(seed)
+    counts = scene_counts_for_registry(entries, prior_counts)
+    sampled: list[tuple[SceneEntry, int]] = []
+    for _ in range(count):
+        min_count = min(counts.values())
+        candidates = [entry for entry in entries if counts[entry.id] == min_count]
+        entry = rng.choice(candidates)
+        camera_seed = rng.randrange(0, 2**31)
+        sampled.append((entry, camera_seed))
+        counts[entry.id] += 1
+    return sampled
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate or sample Blender scene registry.")
     parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY_PATH)
     parser.add_argument("--sample", type=int, default=0, help="Print N sampled scenes as JSON.")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--balance",
+        action="store_true",
+        help="When sampling, minimize imbalance (requires --prior-counts JSON).",
+    )
+    parser.add_argument(
+        "--prior-counts",
+        type=str,
+        default="",
+        help='JSON object mapping scene_id -> clip count, e.g. \'{"docks_scene": 5}\'.',
+    )
     args = parser.parse_args()
 
     entries = load_scene_registry(args.registry)
     if args.sample:
+        prior: dict[str, int] | None = None
+        if args.prior_counts.strip():
+            prior = {str(k): int(v) for k, v in json.loads(args.prior_counts).items()}
+        if args.balance:
+            planned = sample_scenes_balanced(entries, args.sample, args.seed, prior_counts=prior)
+        else:
+            planned = sample_scenes(entries, args.sample, args.seed)
         payload = [
             {"scene": entry.to_dict(), "camera_seed": camera_seed}
-            for entry, camera_seed in sample_scenes(entries, args.sample, args.seed)
+            for entry, camera_seed in planned
         ]
     else:
         payload = [entry.to_dict() for entry in entries]

@@ -105,7 +105,31 @@ def evaluate(args, model_pos, test_loader, datareader):
         e2 = float(np.mean(p_mpjpe(pred.reshape(-1, pred.shape[2], 3), gt.reshape(-1, gt.shape[2], 3))))
         log.info(f'Protocol #1 Error (MPJPE):{e1}')
         log.info(f'Protocol #2 Error (P-MPJPE):{e2}')
-        return e1, e2, results_all
+
+        # Bicycle dynamics errors: derived from 3D keypoints via the same
+        # geometric extractor used in the loss, then reported in degrees.
+        # `pred` and `gt` here have shape (N_windows, T, J, 3).
+        try:
+            with torch.no_grad():
+                pred_t = torch.from_numpy(np.asarray(pred, dtype=np.float64))
+                gt_t = torch.from_numpy(np.asarray(gt, dtype=np.float64))
+                steer_l1 = math.degrees(loss_bicycle_steer(pred_t, gt_t).item())
+                roll_l1 = math.degrees(loss_bicycle_roll(pred_t, gt_t).item())
+                steer_v_l1 = math.degrees(loss_bicycle_steer_velocity(pred_t, gt_t).item())
+                roll_v_l1 = math.degrees(loss_bicycle_roll_velocity(pred_t, gt_t).item())
+            log.info(f'Protocol #3 Error (Steer L1):{steer_l1}deg')
+            log.info(f'Protocol #4 Error (Roll L1):{roll_l1}deg')
+            log.info(f'Protocol #5 Error (Steer Velocity L1):{steer_v_l1}deg/frame')
+            log.info(f'Protocol #6 Error (Roll Velocity L1):{roll_v_l1}deg/frame')
+            return e1, e2, results_all, {
+                'steer_l1_deg': steer_l1,
+                'roll_l1_deg': roll_l1,
+                'steer_velocity_l1_deg': steer_v_l1,
+                'roll_velocity_l1_deg': roll_v_l1,
+            }
+        except Exception as exc:
+            log.info(f'WARNING: bicycle dynamics eval failed: {exc!r}')
+            return e1, e2, results_all, {}
     results_all = datareader.denormalize(results_all)# [n_clips, -1, 17, 3]
     log.info(results_all.shape)
     _, split_id_test = datareader.get_split_id()
@@ -184,7 +208,7 @@ def evaluate(args, model_pos, test_loader, datareader):
     log.info(f'Protocol #1 Error (MPJPE):{e1}mm')
     log.info(f'Protocol #2 Error (P-MPJPE):{e2}mm')
     log.info('----------')
-    return e1, e2, results_all
+    return e1, e2, results_all, {}
         
 def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt):
     model_pos.train()
@@ -242,7 +266,20 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt
             # index = [1,1,1,1,2,2,2,2,1]
             # dif_seq = torch.mean(torch.multiply(weights_joints, torch.square(dif_seq)), dim=-1)
             loss_diff = torch.mean(torch.multiply(weights_joints, torch.square(dif_seq)))
-            
+
+            # Bicycle dynamics losses (steer + roll). Self-consistent: both
+            # pred and target are passed through the same geometric extractor
+            # so the loss is zero iff the predicted keypoints reproduce the
+            # target's steer / roll angles.
+            lambda_steer = float(getattr(args, "lambda_steer", 0.0))
+            lambda_steer_velocity = float(getattr(args, "lambda_steer_velocity", 0.0))
+            lambda_roll = float(getattr(args, "lambda_roll", 0.0))
+            lambda_roll_velocity = float(getattr(args, "lambda_roll_velocity", 0.0))
+            loss_steer = loss_bicycle_steer(predicted_3d_pos, batch_gt)
+            loss_steer_velocity = loss_bicycle_steer_velocity(predicted_3d_pos, batch_gt)
+            loss_roll = loss_bicycle_roll(predicted_3d_pos, batch_gt)
+            loss_roll_velocity = loss_bicycle_roll_velocity(predicted_3d_pos, batch_gt)
+
             loss_total = args.lambda_3d * loss_3d_pos + \
                          args.lambda_scale       * loss_3d_scale + \
                          args.lambda_3d_velocity * loss_3d_velocity + \
@@ -251,8 +288,12 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt
                          args.lambda_a           * loss_a  + \
                          args.lambda_av          * loss_av + \
                          args.lambda_3dw          * loss_3d_w + \
-                         args.lambda_diff          * loss_diff 
-                             
+                         args.lambda_diff          * loss_diff + \
+                         lambda_steer             * loss_steer + \
+                         lambda_steer_velocity    * loss_steer_velocity + \
+                         lambda_roll              * loss_roll + \
+                         lambda_roll_velocity     * loss_roll_velocity
+
             losses['3d_pos'].update(loss_3d_pos.item(), batch_size)
             losses['3d_scale'].update(loss_3d_scale.item(), batch_size)
             losses['3d_velocity'].update(loss_3d_velocity.item(), batch_size)
@@ -260,6 +301,10 @@ def train_epoch(args, model_pos, train_loader, losses, optimizer, has_3d, has_gt
             losses['lg'].update(loss_lg.item(), batch_size)
             losses['angle'].update(loss_a.item(), batch_size)
             losses['angle_velocity'].update(loss_av.item(), batch_size)
+            losses['steer'].update(loss_steer.item(), batch_size)
+            losses['steer_velocity'].update(loss_steer_velocity.item(), batch_size)
+            losses['roll'].update(loss_roll.item(), batch_size)
+            losses['roll_velocity'].update(loss_roll_velocity.item(), batch_size)
             losses['total'].update(loss_total.item(), batch_size)
         else:
             loss_2d_proj = loss_2d_weighted(predicted_3d_pos, batch_gt, conf)
@@ -279,7 +324,11 @@ def get_beijing_timestamp():
 
 def train_with_config(args, opts):
 
-    opts.checkpoint = opts.checkpoint +'_'+ datetime.datetime.fromtimestamp(get_beijing_timestamp()).strftime('%Y_%m_%d_T_%H_%M_%S')
+    run_dir = os.environ.get("POSEMAMBA_CHECKPOINT_RUN_DIR", "").strip()
+    if run_dir:
+        opts.checkpoint = run_dir
+    else:
+        opts.checkpoint = opts.checkpoint +'_'+ datetime.datetime.fromtimestamp(get_beijing_timestamp()).strftime('%Y_%m_%d_T_%H_%M_%S')
     os.makedirs(opts.checkpoint, exist_ok=True)
     # global log
     # log = logger.set_save_path(opts.checkpoint)
@@ -422,6 +471,10 @@ def train_with_config(args, opts):
             losses['3d_velocity'] = AverageMeter()
             losses['angle'] = AverageMeter()
             losses['angle_velocity'] = AverageMeter()
+            losses['steer'] = AverageMeter()
+            losses['steer_velocity'] = AverageMeter()
+            losses['roll'] = AverageMeter()
+            losses['roll_velocity'] = AverageMeter()
             N = 0
                         
             # Curriculum Learning
@@ -439,7 +492,7 @@ def train_with_config(args, opts):
                     lr,
                    losses['3d_pos'].avg))
             else:
-                e1, e2, results_all = evaluate(args, model_pos, test_loader, datareader)
+                e1, e2, results_all, eval_extras = evaluate(args, model_pos, test_loader, datareader)
                 log.info('[%d] time %.2f lr %f 3d_train %f e1 %f e2 %f' % (
                     epoch + 1,
                     elapsed,
@@ -457,7 +510,20 @@ def train_with_config(args, opts):
                 train_writer.add_scalar('loss_lg', losses['lg'].avg, epoch + 1)
                 train_writer.add_scalar('loss_a', losses['angle'].avg, epoch + 1)
                 train_writer.add_scalar('loss_av', losses['angle_velocity'].avg, epoch + 1)
+                train_writer.add_scalar('loss_steer', losses['steer'].avg, epoch + 1)
+                train_writer.add_scalar('loss_steer_velocity', losses['steer_velocity'].avg, epoch + 1)
+                train_writer.add_scalar('loss_roll', losses['roll'].avg, epoch + 1)
+                train_writer.add_scalar('loss_roll_velocity', losses['roll_velocity'].avg, epoch + 1)
                 train_writer.add_scalar('loss_total', losses['total'].avg, epoch + 1)
+                if eval_extras:
+                    if 'steer_l1_deg' in eval_extras:
+                        train_writer.add_scalar('Error P3 Steer L1 deg', eval_extras['steer_l1_deg'], epoch + 1)
+                    if 'roll_l1_deg' in eval_extras:
+                        train_writer.add_scalar('Error P4 Roll L1 deg', eval_extras['roll_l1_deg'], epoch + 1)
+                    if 'steer_velocity_l1_deg' in eval_extras:
+                        train_writer.add_scalar('Error P5 Steer Velocity L1 deg', eval_extras['steer_velocity_l1_deg'], epoch + 1)
+                    if 'roll_velocity_l1_deg' in eval_extras:
+                        train_writer.add_scalar('Error P6 Roll Velocity L1 deg', eval_extras['roll_velocity_l1_deg'], epoch + 1)
                 
             # Decay learning rate exponentially
             lr *= lr_decay

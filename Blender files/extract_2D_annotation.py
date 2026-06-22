@@ -15,6 +15,11 @@ PIPELINE_TOOLS_DIR = REPO_ROOT / "data_generation_pipeline_tools"
 if str(PIPELINE_TOOLS_DIR) not in sys.path:
     sys.path.insert(0, str(PIPELINE_TOOLS_DIR))
 from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, canonical_keypoint_name
+from data_generation_pipeline_tools.mujoco_trajectory_dynamics import (
+    assert_trajectory_frame_count,
+    dynamics_gt_payload,
+)
+from data_generation_pipeline_tools.pipeline_clip_registry import trajectory_file_sha256
 
 COLLECTION_NAME = "Keypoints"
 BICYCLE_MESH_COLLECTION = os.environ.get("BICYCLE_BBOX_COLLECTION", "Bicycle")
@@ -130,7 +135,19 @@ def _world_background_strength(scene):
     return None
 
 
-def _metadata_from_env(scene, clip_id, output_dir):
+def _trajectory_csv_path() -> Path:
+    requested = os.environ.get("TRAJECTORY_CSV", "").strip()
+    if not requested:
+        raise RuntimeError(
+            "TRAJECTORY_CSV is required for bicycle annotation export (MuJoCo dynamics GT)."
+        )
+    path = Path(requested).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"Trajectory CSV not found: {path}")
+    return path
+
+
+def _metadata_from_env(scene, clip_id, output_dir, trajectory_csv: Path):
     lighting_strength = os.environ.get("LIGHTING_STRENGTH")
     if lighting_strength in {None, ""}:
         world_strength = _world_background_strength(scene)
@@ -149,6 +166,8 @@ def _metadata_from_env(scene, clip_id, output_dir):
         "lighting_seed": os.environ.get("LIGHTING_SEED", ""),
         "lighting_strength": lighting_strength,
         "output_dir": str(output_dir),
+        "trajectory_csv": str(trajectory_csv),
+        "dynamics_fields": ["steer_deg", "roll_deg"],
     }
 
 
@@ -259,7 +278,10 @@ def export_annotations():
     start_frame = int(scene.frame_start)
     end_frame = int(scene.frame_end)
     frame_count = end_frame - start_frame + 1
-    render_config = _metadata_from_env(scene, clip_id, out_root)
+    trajectory_csv = _trajectory_csv_path()
+    trajectory_rows = assert_trajectory_frame_count(trajectory_csv, frame_count)
+    render_config = _metadata_from_env(scene, clip_id, out_root, trajectory_csv)
+    render_config["trajectory_sha256"] = trajectory_file_sha256(trajectory_csv)
     render_config["missing_keypoints"] = missing
 
     # Legacy single-file camera (first exported frame). Per-frame K/R/t live in keypoints_3d.jsonl.
@@ -413,6 +435,12 @@ def export_annotations():
                 == len(BICYCLE_KEYPOINT_NAMES)
             ):
                 raise RuntimeError("3D keypoint export alignment mismatch.")
+            frame_index = frame - start_frame
+            keypoints_3d["dynamics_gt"] = dynamics_gt_payload(
+                trajectory_csv,
+                frame_index,
+                trajectory_rows=trajectory_rows,
+            )
             jsonl.write(json.dumps(keypoints_3d) + "\n")
             frame_idx = frame - start_frame + 1
             progress = (

@@ -43,6 +43,8 @@ class ClipData:
     K: np.ndarray  # [3, 3]
     R: np.ndarray  # [3, 3]
     t: np.ndarray  # [3]
+    steer_deg: np.ndarray  # [F]
+    roll_deg: np.ndarray  # [F]
 
 
 def _load_json(path: Path) -> dict:
@@ -169,6 +171,8 @@ def _read_clip(
     occluded_mask = np.zeros((F, J), dtype=np.uint8)
     in_front_mask = np.zeros((F, J), dtype=np.uint8)
     frame_idx = np.zeros((F,), dtype=np.int32)
+    steer_deg = np.zeros((F,), dtype=np.float32)
+    roll_deg = np.zeros((F,), dtype=np.float32)
 
     for i, (row2d, row3d) in enumerate(zip(frames2d, rows3d)):
         frame_idx[i] = int(row2d["frame_index"])
@@ -186,12 +190,12 @@ def _read_clip(
         elif bbox_source == "detection":
             det_bbox = row2d.get("det_bbox_xyxy")
             if det_bbox is None:
-                raise ValueError(
-                    f"bbox_source=detection requires det_bbox_xyxy in detected sidecar "
-                    f"(frame {frame_idx[i]} in {clip_dir.name})"
-                )
-            x1, y1, x2, y2 = [float(v) for v in det_bbox]
-            bboxes[i] = np.asarray([x1, y1, max(1.0, x2 - x1), max(1.0, y2 - y1)], dtype=np.float32)
+                det_bbox = row2d.get("bbox_xyxy")
+            if det_bbox is None:
+                bboxes[i] = _xywh_from_keypoints_row(row2d)
+            else:
+                x1, y1, x2, y2 = [float(v) for v in det_bbox]
+                bboxes[i] = np.asarray([x1, y1, max(1.0, x2 - x1), max(1.0, y2 - y1)], dtype=np.float32)
         else:
             raise ValueError(f"Unknown bbox_source: {bbox_source}")
 
@@ -245,6 +249,18 @@ def _read_clip(
             occluded_mask[i, j] = np.uint8(occluded_row[j])
             in_front_mask[i, j] = np.uint8(in_front_row[j])
 
+        frame_index = int(row3d.get("frame_index", i))
+        dynamics = row3d.get("dynamics_gt")
+        if not isinstance(dynamics, dict):
+            raise ValueError(
+                f"{clip_dir.name}: frame {frame_index} missing dynamics_gt in keypoints_3d.jsonl. "
+                "Re-export annotations with TRAJECTORY_CSV set or run inject_dynamics_into_raw_clips.py."
+            )
+        steer_deg[i] = float(dynamics["steer_deg"])
+        roll_deg[i] = float(dynamics["roll_deg"])
+        if frame_index != i:
+            raise ValueError(f"{clip_dir.name}: non-contiguous frame_index {frame_index} at row {i}")
+
     points_2d_norm = _normalize_2d(points_2d, bboxes)
     return ClipData(
         clip_id=rows3d[0]["clip_id"],
@@ -262,6 +278,8 @@ def _read_clip(
         K=np.asarray(camera["K"], dtype=np.float32),
         R=np.asarray(camera["R"], dtype=np.float32),
         t=np.asarray(camera["t"], dtype=np.float32),
+        steer_deg=steer_deg,
+        roll_deg=roll_deg,
     )
 
 
@@ -296,12 +314,15 @@ def _pack_window_sample(
         "R": clip.R,
         "t": clip.t,
         "image_wh": np.asarray(clip.image_wh, dtype=np.int32),
+        "steer_deg": clip.steer_deg[frame_ids],
+        "roll_deg": clip.roll_deg[frame_ids],
         "meta": {
             "clip_id": clip.clip_id,
             "st": int(st),
             "end": int(end),
             "slice_style": slice_style,
             "window_size": int(frame_ids.shape[0]),
+            "has_dynamics_gt": True,
         },
     }
 
@@ -347,8 +368,28 @@ def _split_clip_ids(clip_ids: list[str], val_ratio: float, test_ratio: float, se
     return {"train": train_ids, "val": val_ids, "test": test_ids}
 
 
+def _split_window_indices(num_windows: int, val_ratio: float, test_ratio: float, seed: int) -> dict[str, set[int]]:
+    if val_ratio < 0 or test_ratio < 0:
+        raise ValueError("val_ratio and test_ratio must be non-negative")
+    if val_ratio + test_ratio >= 1.0:
+        raise ValueError("val_ratio + test_ratio must be < 1.0")
+    rng = random.Random(seed)
+    ids = list(range(num_windows))
+    rng.shuffle(ids)
+    n_test = int(num_windows * test_ratio)
+    n_val = int(num_windows * val_ratio)
+    if n_test + n_val > num_windows:
+        n_val = max(0, num_windows - n_test)
+    test_ids = set(ids[:n_test])
+    val_ids = set(ids[n_test : n_test + n_val])
+    train_ids = set(ids[n_test + n_val :])
+    return {"train": train_ids, "val": val_ids, "test": test_ids}
+
+
 def _write_posemamba_split(samples: list[dict], split_dir: Path, use_confidence: bool) -> None:
     split_dir.mkdir(parents=True, exist_ok=True)
+    for stale in split_dir.glob("*.pkl"):
+        stale.unlink()
     for i, sample in enumerate(samples):
         k2d = sample["kpts2d"]
         if use_confidence:
@@ -358,7 +399,15 @@ def _write_posemamba_split(samples: list[dict], split_dir: Path, use_confidence:
         payload = {
             "data_input": model_input,
             "data_label": sample["kpts3d_cam"].astype(np.float32),
-            "meta": sample.get("meta", {"clip_id": sample["clip_id"], "window_index": i}),
+            "dynamics_gt": {
+                "steer_deg": sample["steer_deg"].astype(np.float32),
+                "roll_deg": sample["roll_deg"].astype(np.float32),
+            },
+            "meta": {
+                **sample.get("meta", {"clip_id": sample["clip_id"]}),
+                "window_index": i,
+                "dynamics_units": {"steer_deg": "deg", "roll_deg": "deg"},
+            },
         }
         with (split_dir / f"{sample['clip_id']}_{i:06d}.pkl").open("wb") as f:
             pickle.dump(payload, f)
@@ -374,25 +423,42 @@ def build_sequences(args: argparse.Namespace) -> None:
         _read_clip(path, input_2d=args.input_2d, bbox_source=args.bbox_source)
         for path in clip_dirs
     ]
-    split_map = _split_clip_ids([clip.clip_id for clip in clips], args.val_ratio, args.test_ratio, args.seed)
-
-    split_stride = {
-        "train": args.stride,
-        "val": args.eval_stride,
-        "test": args.eval_stride,
-    }
     split_samples: dict[str, list[dict]] = {"train": [], "val": [], "test": []}
     windows_per_source_clip: dict[str, int] = {}
-    for clip in clips:
-        split = "train"
-        if clip.clip_id in split_map["val"]:
-            split = "val"
-        elif clip.clip_id in split_map["test"]:
-            split = "test"
-        stride = split_stride[split]
-        windows = _slice_clip(clip, args.window_size, stride, args.slice_style)
-        windows_per_source_clip[clip.clip_id] = len(windows)
-        split_samples[split].extend(windows)
+    split_map: dict[str, set[str]] = {"train": set(), "val": set(), "test": set()}
+    if args.split_mode == "clip":
+        split_map = _split_clip_ids([clip.clip_id for clip in clips], args.val_ratio, args.test_ratio, args.seed)
+        split_stride = {
+            "train": args.stride,
+            "val": args.eval_stride,
+            "test": args.eval_stride,
+        }
+        for clip in clips:
+            split = "train"
+            if clip.clip_id in split_map["val"]:
+                split = "val"
+            elif clip.clip_id in split_map["test"]:
+                split = "test"
+            stride = split_stride[split]
+            windows = _slice_clip(clip, args.window_size, stride, args.slice_style)
+            windows_per_source_clip[clip.clip_id] = len(windows)
+            split_samples[split].extend(windows)
+    else:
+        all_windows: list[dict] = []
+        for clip in clips:
+            windows = _slice_clip(clip, args.window_size, args.stride, args.slice_style)
+            windows_per_source_clip[clip.clip_id] = len(windows)
+            all_windows.extend(windows)
+        window_split = _split_window_indices(len(all_windows), args.val_ratio, args.test_ratio, args.seed)
+        for idx, sample in enumerate(all_windows):
+            split = "train"
+            if idx in window_split["val"]:
+                split = "val"
+            elif idx in window_split["test"]:
+                split = "test"
+            split_samples[split].append(sample)
+        for split_name, samples in split_samples.items():
+            split_map[split_name] = {str(sample["clip_id"]) for sample in samples}
 
     out_root = args.output_root
     out_root.mkdir(parents=True, exist_ok=True)
@@ -411,6 +477,8 @@ def build_sequences(args: argparse.Namespace) -> None:
             "image_wh": np.asarray([sample["image_wh"] for sample in samples], dtype=np.int32),
             "frame_idx": np.asarray([sample["frame_idx"] for sample in samples], dtype=np.int32),
             "clip_id": np.asarray([sample["clip_id"] for sample in samples]),
+            "steer_deg": np.asarray([sample["steer_deg"] for sample in samples], dtype=np.float32),
+            "roll_deg": np.asarray([sample["roll_deg"] for sample in samples], dtype=np.float32),
         }
         np.savez_compressed(out_root / f"sequences_{split}.npz", **npz_payload)
 
@@ -459,10 +527,12 @@ def build_sequences(args: argparse.Namespace) -> None:
             "test": args.test_ratio,
             "train_implied": max(0.0, 1.0 - args.val_ratio - args.test_ratio),
         },
+        "split_mode": args.split_mode,
         "split_clip_counts": split_clip_counts,
         "splits": {k: sorted(list(v)) for k, v in split_map.items()},
         "normalization": "bbox_center_scale",
         "coord_frame_target": "camera",
+        "dynamics_gt": ["steer_deg", "roll_deg"],
     }
     with (out_root / "meta.json").open("w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
@@ -479,13 +549,40 @@ def run_qa(output_root: Path) -> None:
             continue
         data = np.load(path, allow_pickle=True)
         J = len(BICYCLE_KEYPOINT_NAMES)
-        for key in ("kpts2d", "kpts2d_conf", "kpts3d_cam", "valid_mask", "frame_idx", "clip_id"):
+        for key in (
+            "kpts2d",
+            "kpts2d_conf",
+            "kpts3d_cam",
+            "valid_mask",
+            "frame_idx",
+            "clip_id",
+            "steer_deg",
+            "roll_deg",
+        ):
             if key not in data:
                 raise ValueError(f"{path.name} missing required key {key}")
         if data["kpts2d"].shape[2] != J or data["kpts3d_cam"].shape[2] != J:
             raise ValueError(f"{path.name} has wrong joint dimension.")
         if data["kpts2d"].shape[1] != data["kpts3d_cam"].shape[1]:
             raise ValueError(f"{path.name} has inconsistent temporal dimensions.")
+        if data["steer_deg"].shape[1] != data["kpts3d_cam"].shape[1]:
+            raise ValueError(f"{path.name} has steer_deg / pose temporal mismatch.")
+
+    posemamba_dirs = sorted(output_root.glob("PoseMamba_f*"))
+    for posemamba_dir in posemamba_dirs:
+        for split in ("train", "val", "test"):
+            split_dir = posemamba_dir / "BICYCLE" / split
+            if not split_dir.is_dir():
+                continue
+            for pkl_path in sorted(split_dir.glob("*.pkl")):
+                with pkl_path.open("rb") as handle:
+                    payload = pickle.load(handle)
+                dynamics = payload.get("dynamics_gt")
+                if not isinstance(dynamics, dict):
+                    raise ValueError(f"{pkl_path} missing dynamics_gt")
+                steer = dynamics.get("steer_deg")
+                if steer is None or np.asarray(steer).shape[0] != payload["data_label"].shape[0]:
+                    raise ValueError(f"{pkl_path} has invalid dynamics_gt.steer_deg")
 
 
 def parse_args() -> argparse.Namespace:
@@ -519,6 +616,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--test-ratio", type=float, default=0.1)
+    parser.add_argument(
+        "--split-mode",
+        choices=("clip", "window"),
+        default="clip",
+        help="clip: keep each clip in one split; window: split sliced windows across train/val/test.",
+    )
     parser.add_argument("--use-confidence", action="store_true")
     parser.add_argument("--qa-only", action="store_true")
     parser.add_argument(

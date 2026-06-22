@@ -28,6 +28,31 @@ def _clip_dirs(raw_root: Path) -> list[Path]:
     ]
 
 
+def _load_clip_list(path: Path, raw_root: Path) -> list[Path]:
+    clip_dirs: list[Path] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        item = raw.strip()
+        if not item or item.startswith("#"):
+            continue
+        candidate = Path(item)
+        if not candidate.is_absolute():
+            candidate = raw_root / item
+        clip_dirs.append(candidate)
+    return clip_dirs
+
+
+def _apply_shard(clip_dirs: list[Path], shard_index: int | None, num_shards: int | None) -> list[Path]:
+    if shard_index is None and num_shards is None:
+        return clip_dirs
+    if shard_index is None or num_shards is None:
+        raise ValueError("--shard-index and --num-shards must be provided together")
+    if num_shards < 1:
+        raise ValueError("--num-shards must be >= 1")
+    if shard_index < 0 or shard_index >= num_shards:
+        raise ValueError("--shard-index must be in [0, num_shards)")
+    return [path for idx, path in enumerate(clip_dirs) if idx % num_shards == shard_index]
+
+
 def _frame_index(path: Path) -> int:
     match = FRAME_INDEX_RE.match(path.stem)
     if match:
@@ -35,7 +60,42 @@ def _frame_index(path: Path) -> int:
     raise ValueError(f"Cannot parse frame index from {path.name}")
 
 
+def _load_json(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _resolve_image_path(clip_dir: Path, row2d: dict) -> Path:
+    image_file = row2d.get("image_file", "")
+    if image_file:
+        candidate = clip_dir / str(image_file)
+        if candidate.is_file():
+            return candidate.resolve()
+    frame = row2d.get("frame")
+    if frame is not None:
+        candidate = clip_dir / "frames" / f"frame_{int(frame):04d}.png"
+        if candidate.is_file():
+            return candidate.resolve()
+    frame_index = int(row2d.get("frame_index", -1))
+    frames_dir = clip_dir / "frames"
+    candidate = frames_dir / f"frame_{frame_index:04d}.png"
+    if candidate.is_file():
+        return candidate.resolve()
+    matches = sorted(frames_dir.glob("*.png"))
+    if frame_index >= 0 and frame_index < len(matches):
+        return matches[frame_index].resolve()
+    raise FileNotFoundError(f"No image for frame_index={frame_index} in {clip_dir}")
+
+
 def _iter_frame_paths(clip_dir: Path) -> list[tuple[int, Path]]:
+    annotation_dir = clip_dir / "per_frame_annotations"
+    if annotation_dir.is_dir():
+        gt_paths = sorted(annotation_dir.glob("keypoints_2d_frame_*.json"))
+        if gt_paths:
+            rows = [_load_json(path) for path in gt_paths]
+            rows.sort(key=lambda item: int(item["frame_index"]))
+            return [(int(row["frame_index"]), _resolve_image_path(clip_dir, row)) for row in rows]
+
     frames_dir = clip_dir / "frames"
     if not frames_dir.is_dir():
         raise FileNotFoundError(f"Missing frames directory: {frames_dir}")
@@ -117,6 +177,9 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-clips", type=int, default=None)
     parser.add_argument("--limit-frames", type=int, default=None, help="Per-clip frame cap for debugging.")
     parser.add_argument("--clip-id", default=None, help="Process a single clip directory name.")
+    parser.add_argument("--clip-list", type=Path, help="Text file of clip directory names/paths to process.")
+    parser.add_argument("--shard-index", type=int, default=None)
+    parser.add_argument("--num-shards", type=int, default=None)
     return parser.parse_args()
 
 
@@ -125,9 +188,10 @@ def main() -> None:
     raw_root = args.raw_root.resolve()
     detector = RFDETRDetector(model_id=args.rfdetr_model, confidence=args.det_confidence)
 
-    clip_dirs = _clip_dirs(raw_root)
+    clip_dirs = _load_clip_list(args.clip_list, raw_root) if args.clip_list else _clip_dirs(raw_root)
     if args.clip_id:
         clip_dirs = [raw_root / args.clip_id]
+    clip_dirs = _apply_shard(clip_dirs, args.shard_index, args.num_shards)
     if args.limit_clips is not None:
         clip_dirs = clip_dirs[: args.limit_clips]
     if not clip_dirs:

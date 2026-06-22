@@ -18,7 +18,7 @@ for path in (REPO_ROOT, TRAINING_DIR, PIPELINE_DIR):
         sys.path.insert(0, str(path))
 
 from lift_from_2d_array import lift_2d_to_3d, load_posemamba_lifter, squeeze_batch
-from posemamba_bicycle_io import DEFAULT_CHECKPOINT
+from pipeline_io import DEFAULT_LIFTER_CHECKPOINT
 
 from pipeline_io import (
     CLIP_LEN,
@@ -39,12 +39,12 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--lifter-checkpoint",
         type=Path,
-        default=DEFAULT_CHECKPOINT,
+        default=DEFAULT_LIFTER_CHECKPOINT,
     )
     parser.add_argument(
         "--lifter-config",
         type=Path,
-        default=TRAINING_DIR / "PoseMamba_train_bicycle.generated.yaml",
+        default=PIPELINE_DIR / "PoseMamba_train_bicycle_X.generated.yaml",
     )
     parser.add_argument("--resume", action="store_true", help="Skip if keypoints_3d.npz exists.")
     return parser.parse_args()

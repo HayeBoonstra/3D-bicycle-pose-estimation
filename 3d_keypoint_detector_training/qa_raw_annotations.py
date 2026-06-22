@@ -55,7 +55,11 @@ def _points_from_2d(row: dict) -> np.ndarray:
     return points
 
 
-def _bbox_contains_visible(row: dict, tolerance: float = 1e-4) -> bool:
+# Mesh-derived gt_bbox vs keypoint empties can disagree by sub-pixel amounts; 1 px is enough.
+_BBOX_CONTAINMENT_TOLERANCE_PX = 1.0
+
+
+def _bbox_contains_visible(row: dict, tolerance: float = _BBOX_CONTAINMENT_TOLERANCE_PX) -> bool:
     bbox = row.get("gt_bbox_xywh")
     if bbox is None:
         return False
@@ -118,9 +122,17 @@ def qa_clip(
     min_depth = float("inf")
     bbox_failures = 0
     bbox_area_fracs: list[float] = []
+    missing_dynamics = 0
     for row3d, ann_path in zip(rows3d, rows2d):
         if list(row3d.get("joint_names", [])) != BICYCLE_KEYPOINT_NAMES:
             raise ValueError(f"{clip_dir.name}: joint_names do not match canonical bicycle schema")
+        dynamics = row3d.get("dynamics_gt")
+        if not isinstance(dynamics, dict):
+            missing_dynamics += 1
+        else:
+            for key in ("steer_deg", "roll_deg"):
+                if key not in dynamics:
+                    raise ValueError(f"{clip_dir.name}: dynamics_gt missing {key}")
         if "K" in row3d and "R" in row3d and "t" in row3d:
             camera = camera_from_json(row3d)
         else:
@@ -137,6 +149,10 @@ def qa_clip(
         area_frac = _bbox_area_fraction(ann_row)
         if area_frac is not None:
             bbox_area_fracs.append(area_frac)
+    if missing_dynamics:
+        raise ValueError(
+            f"{clip_dir.name}: {missing_dynamics}/{len(rows3d)} frames lack dynamics_gt in keypoints_3d.jsonl"
+        )
 
     max_camera_3d = float(max(camera_3d_rmses) if camera_3d_rmses else 0.0)
     if max_camera_3d > max_camera_3d_rmse:
@@ -189,7 +205,10 @@ def qa_clip(
 
 
 def _is_bbox_framing_error(exc: BaseException) -> bool:
-    return isinstance(exc, ValueError) and "gt_bbox" in str(exc)
+    if not isinstance(exc, ValueError):
+        return False
+    msg = str(exc)
+    return "gt_bbox" in msg or "bboxes that do not enclose" in msg
 
 
 def run_qa(

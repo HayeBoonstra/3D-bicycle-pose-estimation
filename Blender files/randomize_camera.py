@@ -219,6 +219,14 @@ def _apply_camera_pose(cam_obj, location, target_location):
     cam_obj.rotation_euler = look_at.to_track_quat("-Z", "Y").to_euler()
 
 
+def _target_world_position_at_frame(target_obj, frame):
+    scene.frame_set(frame)
+    bpy.context.view_layer.update()
+    depsgraph = bpy.context.evaluated_depsgraph_get()
+    target_eval = target_obj.evaluated_get(depsgraph)
+    return target_eval.matrix_world.translation.copy(), depsgraph
+
+
 def _keypoint_screen_metrics(scene_obj, cam_obj, depsgraph, keypoint_objects, width, height):
     xs = []
     ys = []
@@ -262,14 +270,21 @@ def _bbox_ok_across_frames(
     max_bbox_area_frac,
     min_visible_keypoints,
     max_low_bbox_frame_frac,
+    track_target_obj=None,
+    track_offset=None,
 ):
     check_frames = _visibility_check_frames(frame_start, frame_end)
     low_bbox_frames = 0
     current_frame = scene_obj.frame_current
     for frame in check_frames:
-        scene_obj.frame_set(frame)
-        bpy.context.view_layer.update()
-        depsgraph = bpy.context.evaluated_depsgraph_get()
+        if track_target_obj is not None and track_offset is not None:
+            target_location, depsgraph = _target_world_position_at_frame(track_target_obj, frame)
+            _apply_camera_pose(cam_obj, target_location + track_offset, target_location)
+            bpy.context.view_layer.update()
+        else:
+            scene_obj.frame_set(frame)
+            bpy.context.view_layer.update()
+            depsgraph = bpy.context.evaluated_depsgraph_get()
         bbox_area_frac, visible = _keypoint_screen_metrics(
             scene_obj, cam_obj, depsgraph, keypoint_objects, width, height
         )
@@ -294,6 +309,8 @@ def _visibility_ok_across_frames(
     *,
     min_visible_keypoints,
     min_visible_frame_ratio,
+    track_target_obj=None,
+    track_offset=None,
 ):
     if not keypoint_objects:
         return False
@@ -302,9 +319,14 @@ def _visibility_ok_across_frames(
     visible_frames = 0
     current_frame = scene_obj.frame_current
     for frame in check_frames:
-        scene_obj.frame_set(frame)
-        bpy.context.view_layer.update()
-        depsgraph = bpy.context.evaluated_depsgraph_get()
+        if track_target_obj is not None and track_offset is not None:
+            target_location, depsgraph = _target_world_position_at_frame(track_target_obj, frame)
+            _apply_camera_pose(cam_obj, target_location + track_offset, target_location)
+            bpy.context.view_layer.update()
+        else:
+            scene_obj.frame_set(frame)
+            bpy.context.view_layer.update()
+            depsgraph = bpy.context.evaluated_depsgraph_get()
         _area_frac, visible = _keypoint_screen_metrics(
             scene_obj, cam_obj, depsgraph, keypoint_objects, width, height
         )
@@ -346,7 +368,7 @@ target_eval = target_obj.evaluated_get(depsgraph)
 bicycle_location = target_eval.matrix_world.translation.copy()
 prop_objects = resolve_prop_objects()
 blocker_names = {obj.name for obj in prop_objects}
-max_tries = int(os.environ.get("CAMERA_MAX_TRIES", "200"))
+max_tries = int(os.environ.get("CAMERA_MAX_TRIES", "1000"))
 min_height_above_target = float(os.environ.get("CAMERA_MIN_HEIGHT_ABOVE_TARGET", "-0.5"))
 min_pitch_deg = float(os.environ.get("CAMERA_MIN_VIEW_PITCH_DEG", "-20.0"))
 min_prop_clearance = float(os.environ.get("CAMERA_PROP_MIN_CLEARANCE", "0.8"))
@@ -440,6 +462,7 @@ for _ in range(max_tries):
     if bbox_area_frac < min_bbox_area_frac or bbox_area_frac > max_bbox_area_frac:
         continue
     if camera_mode == "track":
+        track_offset = candidate_location - bicycle_location
         if not _bbox_ok_across_frames(
             scene,
             camera,
@@ -452,6 +475,8 @@ for _ in range(max_tries):
             max_bbox_area_frac=max_bbox_area_frac,
             min_visible_keypoints=min_visible_keypoints,
             max_low_bbox_frame_frac=max_low_bbox_frame_frac,
+            track_target_obj=target_obj,
+            track_offset=track_offset,
         ):
             continue
     elif not _visibility_ok_across_frames(
@@ -462,6 +487,8 @@ for _ in range(max_tries):
         visibility_end,
         min_visible_keypoints=min_visible_keypoints,
         min_visible_frame_ratio=min_visible_frame_ratio,
+        track_target_obj=target_obj if camera_mode == "track" else None,
+        track_offset=(candidate_location - bicycle_location) if camera_mode == "track" else None,
     ):
         continue
 

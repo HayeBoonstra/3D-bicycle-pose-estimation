@@ -29,6 +29,7 @@ RANDOMIZE_CAMERA_SCRIPT = BLENDER_FILES_DIR / "randomize_camera.py"
 TRACK_CAMERA_SCRIPT = BLENDER_FILES_DIR / "track_camera_to_target.py"
 RANDOMIZE_LIGHTING_SCRIPT = BLENDER_FILES_DIR / "randomize_lighting_strength.py"
 RANDOMIZE_FOG_SCRIPT = BLENDER_FILES_DIR / "randomize_fog.py"
+ANIMATE_SCRIPT = BLENDER_FILES_DIR / "Animate_script.py"
 EXPORT_SCRIPT = BLENDER_FILES_DIR / "extract_2D_annotation.py"
 
 
@@ -47,6 +48,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--bike", default="")
     parser.add_argument("--rider", default="")
     parser.add_argument("--camera-target", default="k_handlebar_middle")
+    parser.add_argument(
+        "--trajectory-csv",
+        type=Path,
+        help="Optional MuJoCo transform CSV to import onto the bicycle armature before rendering.",
+    )
     parser.add_argument("--frame-start", type=int)
     parser.add_argument("--frame-end", type=int)
     parser.add_argument(
@@ -62,6 +68,18 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--encode-video", action="store_true")
     parser.add_argument("--fps", type=int)
+    parser.add_argument("--render-format", choices=("PNG", "JPEG"), default=os.environ.get("RENDER_FORMAT", "PNG"))
+    parser.add_argument(
+        "--resolution-percentage",
+        type=int,
+        default=int(os.environ.get("BLENDER_RESOLUTION_PERCENTAGE", "100")),
+    )
+    parser.add_argument(
+        "--cycles-samples",
+        type=int,
+        default=int(os.environ.get("BLENDER_CYCLES_SAMPLES", "0")),
+        help="If >0 and the scene uses Cycles, cap render samples for faster scale runs.",
+    )
     parser.add_argument(
         "--quiet-mode",
         action=argparse.BooleanOptionalAction,
@@ -114,6 +132,14 @@ def _parse_args() -> argparse.Namespace:
         default=os.environ.get("CAMERA_MODE", "track"),
         help="track: camera follows bicycle each frame; fixed: legacy world-fixed camera.",
     )
+    parser.add_argument(
+        "--annotations-only",
+        action="store_true",
+        help=(
+            "Re-apply trajectory and camera setup, then re-export labels without rendering PNG frames. "
+            "Requires an existing clip output directory and --trajectory-csv."
+        ),
+    )
     return parser.parse_args(_argv_after_double_dash())
 
 
@@ -126,6 +152,11 @@ def _set_env(args: argparse.Namespace, output_dir: Path) -> None:
     os.environ["RAW_RENDERS_DIR"] = str(output_dir)
     os.environ["BIKE_TAG"] = args.bike
     os.environ["RIDER_TAG"] = args.rider
+    os.environ["REPO_ROOT"] = str(REPO_ROOT)
+    if args.trajectory_csv is not None:
+        os.environ["TRAJECTORY_CSV"] = str(args.trajectory_csv.resolve())
+    else:
+        os.environ.pop("TRAJECTORY_CSV", None)
     os.environ["CAMERA_SYNC_WINDOW_SIZE"] = str(args.sync_window_size)
     os.environ["CAMERA_MIN_DISTANCE"] = str(args.camera_min_distance)
     os.environ["CAMERA_MAX_DISTANCE"] = str(args.camera_max_distance)
@@ -148,7 +179,22 @@ def _configure_scene(args: argparse.Namespace, output_dir: Path) -> None:
 
     frames_dir = output_dir / "frames"
     frames_dir.mkdir(parents=True, exist_ok=True)
-    scene.render.image_settings.file_format = "PNG"
+    render_format = str(args.render_format).upper()
+    # Some scenes are saved with movie output (FFMPEG), which can lock image_settings
+    # enums. Force image-sequence mode first, then assign requested still format.
+    try:
+        scene.render.file_format = render_format
+    except Exception:
+        pass
+    try:
+        scene.render.image_settings.file_format = render_format
+    except TypeError:
+        # Fallback: force PNG sequence if the requested format is unavailable.
+        scene.render.file_format = "PNG"
+        scene.render.image_settings.file_format = "PNG"
+    scene.render.resolution_percentage = max(1, min(100, int(args.resolution_percentage)))
+    if args.cycles_samples > 0 and hasattr(scene, "cycles"):
+        scene.cycles.samples = int(args.cycles_samples)
     scene.render.filepath = str(frames_dir / "frame_")
 
 
@@ -180,7 +226,7 @@ def _silence_stdout_stderr():
 
 
 @contextlib.contextmanager
-def _render_progress(scene, output_fd: int) -> None:
+def _render_progress(scene, output_fd: int, quiet_mode: bool) -> None:
     """Print one in-place progress line while Blender renders animation frames."""
     frame_start = int(scene.frame_start)
     frame_end = int(scene.frame_end)
@@ -200,11 +246,8 @@ def _render_progress(scene, output_fd: int) -> None:
             return
         state["last_frame"] = current_frame
         done = max(0, min(total_frames, current_frame - frame_start + 1))
-        if not args.quiet_mode:
-            _write(
-                f"\r[render_clip] rendering frame {done}/{total_frames} "
-                f"(scene frame {current_frame})"
-            )
+        if not quiet_mode:
+            _write(f"\r[render_clip] rendering frame {done}/{total_frames} (scene frame {current_frame})")
         state["printed"] = True
 
     bpy.app.handlers.render_write.append(_on_render_write)
@@ -213,7 +256,7 @@ def _render_progress(scene, output_fd: int) -> None:
     finally:
         if _on_render_write in bpy.app.handlers.render_write:
             bpy.app.handlers.render_write.remove(_on_render_write)
-        if state["printed"]:
+        if state["printed"] and not quiet_mode:
             _write("\n")
 
 
@@ -282,33 +325,78 @@ def _encode_mp4(output_dir: Path, clip_id: str, fps: int, frame_start: int, quie
         print(f"[render_clip] wrote {output_video}")
 
 
-def main() -> None:
-    args = _parse_args()
+def _load_existing_render_config(output_dir: Path) -> dict:
+    path = output_dir / "render_config.json"
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"--annotations-only requires existing render_config.json in {output_dir}"
+        )
+    import json
+
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def render_one_clip(args: argparse.Namespace) -> None:
     output_dir = args.out.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
+    if args.trajectory_csv is None:
+        raise ValueError("--trajectory-csv is required for bicycle clip export")
+
+    if args.annotations_only:
+        existing = _load_existing_render_config(output_dir)
+        scene = bpy.context.scene
+        scene.frame_start = int(existing.get("frame_start", scene.frame_start))
+        scene.frame_end = int(existing.get("frame_end", scene.frame_end))
+        if args.fps is not None:
+            scene.render.fps = args.fps
+        elif existing.get("fps"):
+            scene.render.fps = int(existing["fps"])
+
     _set_env(args, output_dir)
     _configure_scene(args, output_dir)
 
     scene = bpy.context.scene
+    if not args.quiet_mode:
+        print(f"[render_clip] importing trajectory: {args.trajectory_csv}")
+    _run_blender_script(ANIMATE_SCRIPT, args.quiet_mode)
+    if args.fps is not None:
+        scene.render.fps = args.fps
     if not args.quiet_mode:
         print(
             f"[render_clip] clip={args.clip_id} scene={args.scene_id} "
             f"frames={scene.frame_start}-{scene.frame_end} camera_seed={args.camera_seed}"
         )
 
+    if not args.quiet_mode:
+        print("[render_clip] randomizing camera...")
     _run_blender_script(RANDOMIZE_CAMERA_SCRIPT, args.quiet_mode)
+    if not args.quiet_mode:
+        print("[render_clip] randomizing lighting...")
     _run_blender_script(RANDOMIZE_LIGHTING_SCRIPT, args.quiet_mode)
+    if not args.quiet_mode:
+        print("[render_clip] randomizing fog...")
     _run_blender_script(RANDOMIZE_FOG_SCRIPT, args.quiet_mode)
     _synchronize_frame_window(args)
     if args.camera_mode == "track":
+        if not args.quiet_mode:
+            print("[render_clip] keyframing follow camera...")
         _run_blender_script(TRACK_CAMERA_SCRIPT, args.quiet_mode)
-    if not args.quiet_mode:
-        print("[render_clip] rendering frames...")
-    with _silence_stdout_stderr() as terminal_fd:
-        with _render_progress(scene, terminal_fd):
-            bpy.ops.render.render(animation=True)
-    if not args.quiet_mode:
-        print("[render_clip] rendering complete")
+    if args.annotations_only:
+        if not args.quiet_mode:
+            print("[render_clip] annotations-only: skipping PNG render")
+    else:
+        if not args.quiet_mode:
+            print("[render_clip] rendering frames...")
+        if args.quiet_mode:
+            with _silence_stdout_stderr() as terminal_fd:
+                with _render_progress(scene, terminal_fd, args.quiet_mode):
+                    bpy.ops.render.render(animation=True)
+        else:
+            terminal_fd = sys.stdout.fileno()
+            with _render_progress(scene, terminal_fd, args.quiet_mode):
+                bpy.ops.render.render(animation=True)
+        if not args.quiet_mode:
+            print("[render_clip] rendering complete")
     _run_blender_script(EXPORT_SCRIPT, args.quiet_mode)
 
     if args.encode_video:
@@ -319,6 +407,10 @@ def main() -> None:
             int(scene.frame_start),
             args.quiet_mode,
         )
+
+
+def main() -> None:
+    render_one_clip(_parse_args())
 
 
 if __name__ == "__main__":

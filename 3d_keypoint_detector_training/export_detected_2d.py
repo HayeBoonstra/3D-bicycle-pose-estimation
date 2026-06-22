@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -19,7 +20,7 @@ from keypoint_detector_pipeline.io_utils import iter_jsonl
 from keypoint_detector_pipeline.pose2d_mmpose import MMPose2DInferencer
 
 DEFAULT_MMPOSE_CONFIG = REPO_ROOT / "2d_keypoint_detector_training" / "rtmpose_bicycle_full.py"
-DEFAULT_MMPOSE_CHECKPOINT = REPO_ROOT / "training_outputs" / "mmpose_bicycle_rtmpose_l_gpu" / "epoch_340.pth"
+DEFAULT_MMPOSE_CHECKPOINT = REPO_ROOT / "training_outputs" / "mmpose_bicycle_rtmpose_l_gpu" / "best_coco_AP_epoch_175.pth"
 DETECTED_PREFIX = "keypoints_2d_detected_frame_"
 DETECTIONS_NAME = "detections.jsonl"
 BICYCLE_INPUT_SIZE = (256, 320)
@@ -42,6 +43,31 @@ def _clip_dirs(raw_root: Path) -> list[Path]:
         for path in sorted(raw_root.iterdir())
         if path.is_dir() and (path / "keypoints_3d.jsonl").exists()
     ]
+
+
+def _load_clip_list(path: Path, raw_root: Path) -> list[Path]:
+    clip_dirs: list[Path] = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        item = raw.strip()
+        if not item or item.startswith("#"):
+            continue
+        candidate = Path(item)
+        if not candidate.is_absolute():
+            candidate = raw_root / item
+        clip_dirs.append(candidate)
+    return clip_dirs
+
+
+def _apply_shard(clip_dirs: list[Path], shard_index: int | None, num_shards: int | None) -> list[Path]:
+    if shard_index is None and num_shards is None:
+        return clip_dirs
+    if shard_index is None or num_shards is None:
+        raise ValueError("--shard-index and --num-shards must be provided together")
+    if num_shards < 1:
+        raise ValueError("--num-shards must be >= 1")
+    if shard_index < 0 or shard_index >= num_shards:
+        raise ValueError("--shard-index must be in [0, num_shards)")
+    return [path for idx, path in enumerate(clip_dirs) if idx % num_shards == shard_index]
 
 
 def _gt_frame_paths(annotation_dir: Path) -> list[Path]:
@@ -158,6 +184,7 @@ def export_clip(
     gt_paths = _gt_frame_paths(annotation_dir)
     if limit_frames is not None:
         gt_paths = gt_paths[:limit_frames]
+    total_frames = len(gt_paths)
 
     processed = 0
     skipped = 0
@@ -212,6 +239,7 @@ def export_clip(
 
     return {
         "clip_id": clip_dir.name,
+        "total_frames": total_frames,
         "processed": processed,
         "skipped": skipped,
         "missing_detections": missing_det,
@@ -243,6 +271,14 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--limit-clips", type=int, default=None)
     parser.add_argument("--limit-frames", type=int, default=None, help="Per-clip frame cap for debugging.")
     parser.add_argument("--clip-id", default=None, help="Process a single clip directory name.")
+    parser.add_argument("--clip-list", type=Path, help="Text file of clip directory names/paths to process.")
+    parser.add_argument("--shard-index", type=int, default=None)
+    parser.add_argument("--num-shards", type=int, default=None)
+    parser.add_argument(
+        "--cleanup-frames",
+        action="store_true",
+        help="Delete clip frames/ right after successful detected-2d export for that clip.",
+    )
     return parser.parse_args()
 
 
@@ -265,9 +301,10 @@ def main() -> None:
     if infer2d._backend != "mmpose":
         raise RuntimeError("MMPose backend failed to load; activate the mmpose conda env.")
 
-    clip_dirs = _clip_dirs(raw_root)
+    clip_dirs = _load_clip_list(args.clip_list, raw_root) if args.clip_list else _clip_dirs(raw_root)
     if args.clip_id:
         clip_dirs = [raw_root / args.clip_id]
+    clip_dirs = _apply_shard(clip_dirs, args.shard_index, args.num_shards)
     if args.limit_clips is not None:
         clip_dirs = clip_dirs[: args.limit_clips]
     if not clip_dirs:
@@ -289,10 +326,19 @@ def main() -> None:
         )
         summary.append(row)
         print(
-            f"  processed={row['processed']} skipped={row['skipped']} "
+            f"  processed={row['processed']}/{row['total_frames']} skipped={row['skipped']} "
             f"missing_det={row['missing_detections']} mean_conf={row['mean_conf']:.3f} "
             f"span_xy=({row['mean_span_x']:.0f},{row['mean_span_y']:.0f})"
         )
+        if args.cleanup_frames:
+            fully_processed = (row["processed"] + row["skipped"]) == row["total_frames"]
+            if fully_processed and row["missing_detections"] == 0:
+                frames_dir = clip_dir / "frames"
+                if frames_dir.is_dir():
+                    shutil.rmtree(frames_dir)
+                    print(f"  cleanup: removed {frames_dir}")
+            else:
+                print("  cleanup: skipped (clip not fully processed or had missing detections)")
 
     summary_path = raw_root / "detected_2d_export_summary.json"
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")

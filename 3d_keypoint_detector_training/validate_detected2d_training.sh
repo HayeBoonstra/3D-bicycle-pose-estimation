@@ -26,7 +26,7 @@ fi
 if [[ -z "${CKPT}" ]]; then
   echo "[validate] Training fresh lifter (DATASET_TAG=${DATA_TAG})..."
   DATASET_TAG="${DATA_TAG}" SEQUENCE_ROOT="${SEQUENCE_ROOT}" "${REPO_ROOT}/3d_keypoint_detector_training/start_training.sh"
-  CKPT="$(ls -t "${REPO_ROOT}"/checkpoints/posemamba_bicycle_*/best_epoch.bin 2>/dev/null | head -1)"
+  CKPT="$(ls -t "${REPO_ROOT}"/posemamba_weights/run_*/best_epoch.bin 2>/dev/null | head -1)"
 fi
 
 if [[ ! -f "${CKPT}" ]]; then

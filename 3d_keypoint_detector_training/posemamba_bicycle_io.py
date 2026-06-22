@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pickle
+import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -17,10 +18,43 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 BICYCLE_GENERATED_CONFIG = (
     _REPO_ROOT / "3d_keypoint_detector_training" / "PoseMamba_train_bicycle.generated.yaml"
 )
-# Set after training: checkpoints/posemamba_bicycle/<timestamp>/best_epoch.bin
-TIMESTAMP = "2026_05_24_T_16_14_08"
-DEFAULT_CHECKPOINT_DIR = _REPO_ROOT / "checkpoints" / f"posemamba_bicycle_{TIMESTAMP}"
-DEFAULT_CHECKPOINT = DEFAULT_CHECKPOINT_DIR / "best_epoch.bin"
+# Default: latest posemamba_weights/run_NNN/best_epoch.bin
+CHECKPOINT_BASE = _REPO_ROOT / "posemamba_weights"
+
+
+def latest_run_checkpoint_dir(checkpoint_base: Path = CHECKPOINT_BASE) -> Path | None:
+    """Highest-numbered run_* directory under checkpoint_base, if any."""
+    if not checkpoint_base.is_dir():
+        return None
+    best_n = -1
+    best_dir: Path | None = None
+    for child in checkpoint_base.iterdir():
+        if not child.is_dir():
+            continue
+        match = re.match(r"^run_(\d+)$", child.name)
+        if match and int(match.group(1)) > best_n:
+            best_n = int(match.group(1))
+            best_dir = child
+    return best_dir
+
+
+def resolve_default_checkpoint() -> Path:
+    run_dir = latest_run_checkpoint_dir()
+    if run_dir is not None:
+        ckpt = run_dir / "best_epoch.bin"
+        if ckpt.is_file():
+            return ckpt
+    raise FileNotFoundError(
+        f"No bicycle checkpoint under {CHECKPOINT_BASE}/run_NNN/best_epoch.bin. "
+        "Train with 3d_keypoint_detector_training/start_training.sh first."
+    )
+
+
+DEFAULT_CHECKPOINT_DIR = CHECKPOINT_BASE
+try:
+    DEFAULT_CHECKPOINT = resolve_default_checkpoint()
+except FileNotFoundError:
+    DEFAULT_CHECKPOINT = CHECKPOINT_BASE / "run_001" / "best_epoch.bin"
 
 
 class Input2DMode(str, Enum):

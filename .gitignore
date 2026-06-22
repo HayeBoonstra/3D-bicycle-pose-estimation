@@ -84,7 +84,9 @@ MUJOCO_LOG.TXT
 raw_renders/*
 training_outputs/*
 checkpoints/*
+posemamba_weights/*
 
 # OS
 .DS_Store
 Thumbs.db
+*.bin

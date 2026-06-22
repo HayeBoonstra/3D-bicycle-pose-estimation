@@ -61,10 +61,154 @@ from data_generation_pipeline_tools.bicycle_keypoint_schema import (  # noqa: E4
 
 _J = len(BICYCLE_KEYPOINT_NAMES)
 _NPZ_KEYS = ("pred", "prediction", "poses", "poses_3d", "kpts3d_cam", "gt", "data_label")
+_DYN_EPS = 1e-6
+
+_KP_BB = KEYPOINT_INDEX["k_bottom_bracket"]
+_KP_SEAT_STAY = KEYPOINT_INDEX["k_seat_stay"]
+_KP_SADDLE = KEYPOINT_INDEX["k_saddle"]
+_KP_UHT = KEYPOINT_INDEX["k_upper_head_tube"]
+_KP_LHT = KEYPOINT_INDEX["k_lower_head_tube"]
+_KP_HB_MID = KEYPOINT_INDEX["k_handlebar_middle"]
+_KP_FH_L = KEYPOINT_INDEX["k_front_hub_left"]
+_KP_FH_R = KEYPOINT_INDEX["k_front_hub_right"]
+_KP_FW_BACK = KEYPOINT_INDEX["k_front_wheel_back"]
+_KP_FW_FRONT = KEYPOINT_INDEX["k_front_wheel_front"]
+_KP_HB_L = KEYPOINT_INDEX["k_handlebar_left"]
+_KP_HB_R = KEYPOINT_INDEX["k_handlebar_right"]
+_KP_RH_L = KEYPOINT_INDEX["k_rear_hub_left"]
+_KP_RH_R = KEYPOINT_INDEX["k_rear_hub_right"]
+_KP_RW_GND = KEYPOINT_INDEX["k_rear_wheel_ground"]
+_SAGITTAL_PLANE_IDS = [_KP_BB, _KP_SEAT_STAY, _KP_SADDLE, _KP_UHT, _KP_LHT, _KP_HB_MID, _KP_RW_GND]
+_FRAME_PLANE_IDS = [_KP_BB, _KP_SEAT_STAY, _KP_SADDLE, _KP_UHT, _KP_LHT, _KP_RH_L, _KP_RH_R, _KP_RW_GND]
 
 
 def skeleton_edge_indices() -> list[tuple[int, int]]:
     return [(KEYPOINT_INDEX[a], KEYPOINT_INDEX[b]) for a, b in BICYCLE_SKELETON_NAMES]
+
+
+def _safe_normalize(v: np.ndarray, eps: float = _DYN_EPS) -> np.ndarray:
+    return v / (np.linalg.norm(v, axis=-1, keepdims=True) + eps)
+
+
+def _signed_oriented(vec: np.ndarray, ref: np.ndarray) -> np.ndarray:
+    dot = np.sum(vec * ref, axis=-1, keepdims=True)
+    sign = np.where(dot >= 0.0, 1.0, -1.0)
+    return vec * sign
+
+
+def _sagittal_plane_normal(kpts: np.ndarray) -> np.ndarray:
+    pts = kpts[:, _SAGITTAL_PLANE_IDS, :]  # (T, K, 3)
+    centered = pts - pts.mean(axis=1, keepdims=True)
+    cov = np.matmul(np.transpose(centered, (0, 2, 1)), centered)  # (T, 3, 3)
+    eigvals, eigvecs = np.linalg.eigh(cov)
+    min_idx = np.argmin(eigvals, axis=-1)
+    n = eigvecs[np.arange(eigvecs.shape[0]), :, min_idx]  # (T, 3)
+    ref = kpts[:, _KP_RH_R, :] - kpts[:, _KP_RH_L, :]
+    return _safe_normalize(_signed_oriented(n, ref))
+
+
+def _fit_plane_normal(kpts: np.ndarray, ids: list[int], orient_ref: np.ndarray) -> np.ndarray:
+    pts = kpts[:, ids, :]  # (T, K, 3)
+    centered = pts - pts.mean(axis=1, keepdims=True)
+    cov = np.matmul(np.transpose(centered, (0, 2, 1)), centered)  # (T, 3, 3)
+    eigvals, eigvecs = np.linalg.eigh(cov)
+    min_idx = np.argmin(eigvals, axis=-1)
+    n = eigvecs[np.arange(eigvecs.shape[0]), :, min_idx]
+    return _safe_normalize(_signed_oriented(n, orient_ref))
+
+
+def _project_to_plane(v: np.ndarray, n: np.ndarray) -> np.ndarray:
+    return v - np.sum(v * n, axis=-1, keepdims=True) * n
+
+
+def _signed_angle_in_plane(a: np.ndarray, b: np.ndarray, n: np.ndarray) -> np.ndarray:
+    a_u = _safe_normalize(a)
+    b_u = _safe_normalize(b)
+    sin_part = np.sum(np.cross(a_u, b_u, axis=-1) * n, axis=-1)
+    cos_part = np.sum(a_u * b_u, axis=-1)
+    return np.arctan2(sin_part, cos_part).astype(np.float32)
+
+
+def _circular_mean(angles_rad: np.ndarray) -> np.ndarray:
+    # angles_rad: (K, T)
+    return np.arctan2(np.mean(np.sin(angles_rad), axis=0), np.mean(np.cos(angles_rad), axis=0)).astype(np.float32)
+
+
+def bicycle_steer_angle(kpts: np.ndarray) -> np.ndarray:
+    """Signed steering angle (rad) from frame-plane intersections.
+
+    Method:
+    1) Fit a global frame plane from frame-rigid keypoints.
+    2) Build a reference forward direction in that plane.
+    3) Build front-assembly planes from steering axis + wheel axis and
+       steering axis + handlebar axis.
+    4) Intersect each assembly plane with the frame plane, then compute signed
+       in-plane angle vs. frame-forward.
+    5) Return circular mean of wheel-based and handlebar-based angles.
+    """
+    rh_l = kpts[:, _KP_RH_L, :]
+    rh_r = kpts[:, _KP_RH_R, :]
+    ht_u = kpts[:, _KP_UHT, :]
+    ht_l = kpts[:, _KP_LHT, :]
+
+    # Frame plane normal and consistent orientation (lateral +X frame direction).
+    ref_lateral = rh_r - rh_l
+    n_frame = _fit_plane_normal(kpts, _FRAME_PLANE_IDS, ref_lateral)
+
+    # Reference "forward" in frame plane: rear axle center -> head-tube center.
+    rear_center = 0.5 * (rh_l + rh_r)
+    head_center = 0.5 * (ht_u + ht_l)
+    fwd = _project_to_plane(head_center - rear_center, n_frame)
+    fwd = _safe_normalize(fwd)
+
+    # Steering axis at the head tube.
+    e = _safe_normalize(ht_u - ht_l)
+
+    # Two steering observables that should co-vary with fork steering.
+    wheel_axis = _safe_normalize(kpts[:, _KP_FH_R, :] - kpts[:, _KP_FH_L, :])
+    # Blend hub axle and wheel front/back for additional robustness.
+    wheel_diam_axis = _safe_normalize(kpts[:, _KP_FW_FRONT, :] - kpts[:, _KP_FW_BACK, :])
+    wheel_axis = _safe_normalize(wheel_axis + 0.5 * wheel_diam_axis)
+    handlebar_axis = _safe_normalize(kpts[:, _KP_HB_R, :] - kpts[:, _KP_HB_L, :])
+
+    # Plane normals for planes spanned by {steer axis, observable axis}.
+    n_wheel_plane = _safe_normalize(np.cross(e, wheel_axis, axis=-1))
+    n_bar_plane = _safe_normalize(np.cross(e, handlebar_axis, axis=-1))
+
+    # Intersection line directions with frame plane.
+    d_wheel = _safe_normalize(np.cross(n_frame, n_wheel_plane, axis=-1))
+    d_bar = _safe_normalize(np.cross(n_frame, n_bar_plane, axis=-1))
+    # Intersections define a wheel/fork "forward" line but can be 180-deg ambiguous.
+    # Resolve orientation by matching each line to the projected front direction.
+    front_ref = _project_to_plane(head_center - rear_center, n_frame)
+    d_wheel = _signed_oriented(d_wheel, front_ref)
+    d_bar = _signed_oriented(d_bar, front_ref)
+
+    ang_wheel = _signed_angle_in_plane(front_ref, d_wheel, n_frame)
+    ang_bar = _signed_angle_in_plane(front_ref, d_bar, n_frame)
+    # The plane-intersection line is orthogonal to the steering observable axis,
+    # introducing a ±90deg baseline. Remove that constant offset so straight
+    # steering is reported near 0deg.
+    ang_wheel = _wrap_pi(ang_wheel + np.deg2rad(90.0))
+    ang_bar = _wrap_pi(ang_bar + np.deg2rad(90.0))
+    return _circular_mean(np.stack([ang_wheel, ang_bar], axis=0))
+
+
+def bicycle_roll_angle(kpts: np.ndarray) -> np.ndarray:
+    n = _sagittal_plane_normal(kpts)
+    nx, ny, nz = n[:, 0], n[:, 1], n[:, 2]
+    horiz = np.sqrt(nx * nx + nz * nz + _DYN_EPS)
+    return np.arctan2(-ny, horiz).astype(np.float32)
+
+
+def _wrap_pi(angle: np.ndarray) -> np.ndarray:
+    return np.arctan2(np.sin(angle), np.cos(angle)).astype(np.float32)
+
+
+def _angle_velocity(angle: np.ndarray) -> np.ndarray:
+    if angle.shape[0] <= 1:
+        return np.zeros((0,), dtype=np.float32)
+    return _wrap_pi(angle[1:] - angle[:-1]).astype(np.float32)
 
 
 def subtract_root(motion: np.ndarray, root_index: int = 0) -> np.ndarray:
@@ -190,8 +334,8 @@ def _finalize_3d_axes(
     ax.set_ylim(lo[1], hi[1])
     ax.set_zlim(lo[2], hi[2])
     ax.view_init(elev=elev, azim=azim)
-    if invert_z:
-        ax.invert_zaxis()
+    # if invert_z:
+    #     ax.invert_zaxis()
     _style_axes(ax)
 
 
@@ -224,6 +368,7 @@ def render_frame(
     azim: float,
     invert_z: bool = True,
     title: str | None = None,
+    metrics_text: list[str] | None = None,
 ) -> np.ndarray:
     """Return an RGB uint8 image for one time step."""
 
@@ -252,6 +397,15 @@ def render_frame(
 
     if title:
         fig.suptitle(title, fontsize=11, y=0.98)
+    if metrics_text:
+        fig.text(
+            0.01,
+            0.02,
+            "  |  ".join(metrics_text),
+            fontsize=9,
+            family="monospace",
+            bbox={"facecolor": "white", "alpha": 0.8, "edgecolor": "none"},
+        )
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", dpi=120, bbox_inches="tight", pad_inches=0.06)
@@ -303,7 +457,53 @@ def motion_to_images_or_video(
         }
         meta["mpjpe_mean_mm"] = meta["mpjpe_mean_m"] * 1000.0
 
+    steer_pred = bicycle_steer_angle(pred)
+    roll_pred = bicycle_roll_angle(pred)
+    steer_vel_pred = _angle_velocity(steer_pred)
+    roll_vel_pred = _angle_velocity(roll_pred)
+    meta["dynamics_pred"] = {
+        "steer_deg": np.rad2deg(steer_pred).astype(np.float32).tolist(),
+        "roll_deg": np.rad2deg(roll_pred).astype(np.float32).tolist(),
+        "steer_velocity_deg": np.rad2deg(steer_vel_pred).astype(np.float32).tolist(),
+        "roll_velocity_deg": np.rad2deg(roll_vel_pred).astype(np.float32).tolist(),
+    }
+
+    steer_gt: np.ndarray | None = None
+    roll_gt: np.ndarray | None = None
+    if gt is not None:
+        steer_gt = bicycle_steer_angle(gt)
+        roll_gt = bicycle_roll_angle(gt)
+        steer_vel_gt = _angle_velocity(steer_gt)
+        roll_vel_gt = _angle_velocity(roll_gt)
+        steer_err = np.abs(_wrap_pi(steer_pred - steer_gt))
+        roll_err = np.abs(_wrap_pi(roll_pred - roll_gt))
+        steer_vel_err = np.abs(_wrap_pi(steer_vel_pred - steer_vel_gt))
+        roll_vel_err = np.abs(_wrap_pi(roll_vel_pred - roll_vel_gt))
+        meta["dynamics_gt"] = {
+            "steer_deg": np.rad2deg(steer_gt).astype(np.float32).tolist(),
+            "roll_deg": np.rad2deg(roll_gt).astype(np.float32).tolist(),
+            "steer_velocity_deg": np.rad2deg(steer_vel_gt).astype(np.float32).tolist(),
+            "roll_velocity_deg": np.rad2deg(roll_vel_gt).astype(np.float32).tolist(),
+        }
+        meta["dynamics_error"] = {
+            "steer_mae_deg": float(np.rad2deg(np.mean(steer_err))),
+            "roll_mae_deg": float(np.rad2deg(np.mean(roll_err))),
+            "steer_velocity_mae_deg": float(np.rad2deg(np.mean(steer_vel_err))) if steer_vel_err.size else 0.0,
+            "roll_velocity_mae_deg": float(np.rad2deg(np.mean(roll_vel_err))) if roll_vel_err.size else 0.0,
+        }
+
     for t in tqdm(range(pred.shape[0]), desc="frames"):
+        metrics_text = [
+            f"steer(pred)={np.rad2deg(steer_pred[t]):+6.2f} deg",
+            f"roll(pred)={np.rad2deg(roll_pred[t]):+6.2f} deg",
+        ]
+        if steer_gt is not None and roll_gt is not None:
+            metrics_text.extend(
+                [
+                    f"steer(gt)={np.rad2deg(steer_gt[t]):+6.2f} deg",
+                    f"roll(gt)={np.rad2deg(roll_gt[t]):+6.2f} deg",
+                ]
+            )
         rgb = render_frame(
             pred_v[t],
             gt_v[t] if gt_v is not None else None,
@@ -314,6 +514,7 @@ def motion_to_images_or_video(
             azim=azim,
             invert_z=invert_z,
             title=title,
+            metrics_text=metrics_text,
         )
         imageio.imwrite(out_dir / f"frame_{t:04d}.png", rgb)
 

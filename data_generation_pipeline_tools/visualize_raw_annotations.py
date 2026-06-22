@@ -98,6 +98,10 @@ def _annotation_path(clip_dir: Path, frame_index: int) -> Path:
     return clip_dir / "per_frame_annotations" / f"keypoints_2d_frame_{frame_index:04d}.json"
 
 
+def _detected_annotation_path(clip_dir: Path, frame_index: int) -> Path:
+    return clip_dir / "per_frame_annotations" / f"keypoints_2d_detected_frame_{frame_index:04d}.json"
+
+
 def _image_for_annotation(clip_dir: Path, annotation: dict[str, Any], fallback_size: tuple[int, int]) -> Image.Image:
     image_file = annotation.get("image_file")
     if image_file:
@@ -222,7 +226,7 @@ def _draw_2d_panel(
             _draw_label(draw, (int(x + 5), int(y - 5)), name.replace("k_", ""), fill=COLORS["text"])
 
     draw.rectangle((0, 0, panel_size[0] - 1, panel_size[1] - 1), outline=(40, 40, 40), width=1)
-    _draw_label(draw, (10, 8), "2D full image (letterboxed)")
+    _draw_label(draw, (10, 8), "2D full image")
     return panel
 
 
@@ -313,10 +317,11 @@ def _unit(vec: np.ndarray) -> np.ndarray:
 def _bicycle_local_points(points_world: np.ndarray) -> np.ndarray:
     """Convert world keypoints to a per-frame bicycle-local coordinate frame.
 
-    X is forward from rear hub center to front hub center, Y is right across the
-    rear hub axle, and Z is up from their cross product. The bottom bracket is
-    the origin. This makes side/top/front projections stable even while the bike
-    moves through the world or is viewed from different cameras.
+    X is forward from rear hub center to front hub center, Y is right, and Z is
+    world-up. The bottom bracket is the origin.
+
+    Using world-up (instead of a fully frame-locked local Z from wheel geometry)
+    keeps roll visually meaningful in the right/up rear view.
     """
 
     bottom_bracket = points_world[KEYPOINT_INDEX["k_bottom_bracket"]]
@@ -328,10 +333,27 @@ def _bicycle_local_points(points_world: np.ndarray) -> np.ndarray:
     front_center = 0.5 * (front_left + front_right)
 
     x_axis = _unit(front_center - rear_center)
-    y_axis = rear_right - rear_left
-    y_axis = _unit(y_axis - np.dot(y_axis, x_axis) * x_axis)
-    z_axis = _unit(np.cross(x_axis, y_axis))
+
+    # Keep "up" tied to world Z so rear-view roll is visible over time.
+    z_axis = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+    z_axis = z_axis - np.dot(z_axis, x_axis) * x_axis
+    if float(np.linalg.norm(z_axis)) <= 1e-8:
+        # Degenerate case when forward is near world-up: fall back to geometry-derived up.
+        y_geom = rear_right - rear_left
+        y_geom = _unit(y_geom - np.dot(y_geom, x_axis) * x_axis)
+        z_axis = _unit(np.cross(x_axis, y_geom))
+    else:
+        z_axis = _unit(z_axis)
+
     y_axis = _unit(np.cross(z_axis, x_axis))
+
+    # Match local "right" sign to actual bike geometry (rear hub left->right).
+    y_geom = rear_right - rear_left
+    y_geom = y_geom - np.dot(y_geom, x_axis) * x_axis
+    if float(np.linalg.norm(y_geom)) > 1e-8:
+        y_geom = _unit(y_geom)
+        if float(np.dot(y_axis, y_geom)) < 0.0:
+            y_axis = -y_axis
     basis = np.stack([x_axis, y_axis, z_axis], axis=1)
     return ((points_world - bottom_bracket) @ basis).astype(np.float32)
 
@@ -447,15 +469,8 @@ def _compose_frame(
     panel_h = int(panel_w * 0.75)
     if panel_h % 2:
         panel_h += 1
-    stack_gap = 10
-    h_crop = (panel_h - stack_gap + 1) // 2
-    h_full = panel_h - stack_gap - h_crop
     points = _points_from_row(row3d, coord_frame)
-    crop_panel = _draw_2d_cropped_panel(annotation, clip_dir, panel_size=(panel_w, h_crop), show_names=show_names)
-    full_panel = _draw_2d_panel(annotation, clip_dir, panel_size=(panel_w, h_full), show_names=show_names)
-    image_panel = Image.new("RGB", (panel_w, panel_h), color=COLORS["panel"])
-    image_panel.paste(crop_panel, (0, 0))
-    image_panel.paste(full_panel, (0, h_crop + stack_gap))
+    image_panel = _draw_2d_panel(annotation, clip_dir, panel_size=(panel_w, panel_h), show_names=show_names)
     points_panel = _draw_3d_panel(points, bounds, panel_size=(panel_w, panel_h), coord_frame=coord_frame)
 
     canvas = Image.new("RGB", (output_width, panel_h + title_h), color=COLORS["background"])
@@ -483,6 +498,7 @@ def visualize_clip(
     max_frames: int | None,
     output_width: int,
     show_names: bool,
+    use_detected_2d: bool,
 ) -> int:
     rows3d = _load_jsonl(clip_dir / "keypoints_3d.jsonl")
     if not rows3d:
@@ -496,7 +512,11 @@ def visualize_clip(
     written = 0
     for output_idx, row_idx in enumerate(frame_indices):
         row3d = rows3d[row_idx]
-        annotation = _load_json(_annotation_path(clip_dir, int(row3d["frame_index"])))
+        frame_index = int(row3d["frame_index"])
+        annotation_path = _detected_annotation_path(clip_dir, frame_index) if use_detected_2d else _annotation_path(clip_dir, frame_index)
+        if use_detected_2d and not annotation_path.is_file():
+            annotation_path = _annotation_path(clip_dir, frame_index)
+        annotation = _load_json(annotation_path)
         frame = _compose_frame(
             clip_dir=clip_dir,
             annotation=annotation,
@@ -547,6 +567,7 @@ def visualize_raw_annotations(args: argparse.Namespace) -> None:
             max_frames=args.max_frames,
             output_width=args.output_width,
             show_names=args.show_names,
+            use_detected_2d=args.use_detected_2d,
         )
         summary.append({"clip_id": clip_dir.name, "frames": written, "out_dir": str(args.out / clip_dir.name)})
         if args.encode_video:
@@ -565,6 +586,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-frames", type=int)
     parser.add_argument("--output-width", type=int, default=1400)
     parser.add_argument("--show-names", action="store_true")
+    parser.add_argument(
+        "--use-detected-2d",
+        action="store_true",
+        help="Use RTMPose sidecars (keypoints_2d_detected_frame_*.json) for left panel; fallback to GT 2D per-frame files.",
+    )
     parser.add_argument("--encode-video", action="store_true")
     parser.add_argument("--fps", type=int, default=12)
     args = parser.parse_args()

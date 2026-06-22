@@ -107,8 +107,13 @@ def _group_windows(input_dir: Path, clip_id: str | None) -> dict[str, list[Path]
 
 def _stitch_predictions(
     windows: list[tuple[int, int, np.ndarray]],
-) -> np.ndarray:
-    """Average overlapping root-relative preds. windows: (st, end, pred[T,J,3])."""
+) -> tuple[np.ndarray, np.ndarray]:
+    """Average overlapping root-relative preds.
+
+    Returns:
+        pred_trimmed: (T_trim, J, 3) with only frames that have prediction support.
+        support_idx: absolute timeline indices kept in pred_trimmed.
+    """
     if not windows:
         raise ValueError("no windows to stitch")
     full_t = max(end for _st, end, _ in windows)
@@ -120,11 +125,15 @@ def _stitch_predictions(
             t = st + i
             acc[t] += pred[i]
             cnt[t] += 1.0
-    cnt = np.maximum(cnt, 1.0)
-    return (acc / cnt[:, None, None]).astype(np.float32)
+    support_idx = np.where(cnt > 0.0)[0]
+    if support_idx.size == 0:
+        raise ValueError("no supported frames after stitching predictions")
+    pred_full = np.zeros_like(acc, dtype=np.float32)
+    pred_full[support_idx] = (acc[support_idx] / cnt[support_idx, None, None]).astype(np.float32)
+    return pred_full[support_idx], support_idx.astype(np.int32)
 
 
-def _stitch_gt(windows: list[tuple[int, int, np.ndarray]]) -> np.ndarray:
+def _stitch_gt(windows: list[tuple[int, int, np.ndarray]], support_idx: np.ndarray) -> np.ndarray:
     full_t = max(end for _st, end, _ in windows)
     acc = np.zeros((full_t, windows[0][2].shape[1], 3), dtype=np.float64)
     cnt = np.zeros(full_t, dtype=np.float64)
@@ -134,7 +143,8 @@ def _stitch_gt(windows: list[tuple[int, int, np.ndarray]]) -> np.ndarray:
             t = st + i
             acc[t] += gt[i]
             cnt[t] += 1.0
-    return (acc / np.maximum(cnt, 1.0)[:, None, None]).astype(np.float32)
+    cnt = np.maximum(cnt[support_idx], 1.0)
+    return (acc[support_idx] / cnt[:, None, None]).astype(np.float32)
 
 
 def _render(
@@ -251,8 +261,8 @@ def main() -> None:
                 gt = prepare_gt_3d(np.asarray(motion["data_label"]), rootrel=bool(getattr(cfg, "rootrel", True)))
                 gt_wins.append((st, end, gt))
 
-        pred_full = _stitch_predictions(pred_wins)
-        gt_full = _stitch_gt(gt_wins) if gt_wins else None
+        pred_full, support_idx = _stitch_predictions(pred_wins)
+        gt_full = _stitch_gt(gt_wins, support_idx) if gt_wins else None
 
         mpjpe: dict[str, float] = {}
         if gt_full is not None:
@@ -294,6 +304,8 @@ def main() -> None:
             "clip_id": cid,
             "num_windows": len(paths),
             "full_frames": int(pred_full.shape[0]),
+            "frame_index_start": int(support_idx[0]),
+            "frame_index_end_exclusive": int(support_idx[-1] + 1),
             "video_dirs": video_dirs,
         }
         if mpjpe:

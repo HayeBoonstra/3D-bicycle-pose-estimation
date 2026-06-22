@@ -25,8 +25,8 @@ def load_posemamba_lifter(
     *,
     fallback_config: Path | None = None,
     posemamba_root: Path | None = None,
-    depth_override: int | None = 10,
-    dim_feat_override: int | None = 64,
+    depth_override: int | None = None,
+    dim_feat_override: int | None = None,
     maxlen_override: int | None = None,
 ) -> tuple[Any, Any, torch.device]:
     """Load PoseMamba model, config, and device from a bicycle checkpoint."""

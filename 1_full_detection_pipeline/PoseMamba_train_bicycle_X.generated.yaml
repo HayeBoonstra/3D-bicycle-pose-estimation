@@ -11,9 +11,9 @@ weight_decay: 0.01
 lr_decay: 0.99
 backbone: PoseMamba
 maxlen: 243
-dim_feat: 64
+dim_feat: 256
 mlp_ratio: 2
-depth: 10
+depth: 20
 att_fuse: true
 data_root: /mnt/SmallSSD/3D-bicycle-pose-estimation/posemamba_training_sequences/PoseMamba_f243s81_detected2d
 subset_list:

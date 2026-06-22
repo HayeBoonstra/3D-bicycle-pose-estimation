@@ -22,7 +22,7 @@ generate_blender_posemamba_dataset.sh   →  data/raw_blender_posemamba/ (≥729
 export_clip_detections.py (rfdetr)        →  {clip}/detections.jsonl
 export_detected_2d.py (mmpose)            →  keypoints_2d_detected_frame_*.json
 build_sequences.py --input-2d detected    →  PoseMamba_f243s81_detected2d/BICYCLE/{train,val,test}/*.pkl
-DATASET_TAG=detected2d start_training.sh →  checkpoints/posemamba_bicycle_<timestamp>/
+DATASET_TAG=detected2d start_training.sh →  posemamba_weights/run_NNN/
 ```
 
 MuJoCo-only raw clips (no `frames/*.png`) cannot run RTMPose export; use Blender renders or the dev smoke script below.
@@ -32,7 +32,7 @@ MuJoCo-only raw clips (no `frames/*.png`) cannot run RTMPose export; use Blender
 ```
 generate_mujoco_direct_dataset.sh  →  raw clips (FRAMES≥729 recommended)
 build_sequences.py                 →  PoseMamba_f243s81/BICYCLE/{train,val,test}/*.pkl
-start_training.sh                  →  checkpoints/posemamba_bicycle_<timestamp>/
+start_training.sh                  →  posemamba_weights/run_NNN/
 ```
 
 Each `.pkl`: **T=243**, **J=18**, `data_input` (2D), `data_label` (camera 3D GT).
@@ -84,18 +84,18 @@ DATASET_TAG=detected2d ./3d_keypoint_detector_training/start_training.sh
 
 Optional: `NOISE_2D=1` for extra 2D noise during training (after detected-2D baseline works).
 
-Checkpoints: `checkpoints/posemamba_bicycle_<YYYY_MM_DD_T_HH_MM_SS>/`. Use `best_epoch.bin` for inference.
+Checkpoints: `posemamba_weights/run_NNN/` (auto) or `posemamba_weights/<name>/` with `EXPERIMENT_NAME=<name>`. Use `best_epoch.bin` for inference.
 
 ## Eval and inference
 
 ```bash
 python 3d_keypoint_detector_training/eval_lifter.py \
-  --checkpoint checkpoints/posemamba_bicycle_<run>/best_epoch.bin
+  --checkpoint posemamba_weights/run_001/best_epoch.bin
 
 python 3d_keypoint_detector_training/visualize_lifter_clip_video.py \
-  --checkpoint checkpoints/posemamba_bicycle_<run>/best_epoch.bin \
-  --input-dir data/posemamba_training_sequences/PoseMamba_f243s81_detected2d/BICYCLE/val \
-  --clip-id <clip_id> \
+  --checkpoint posemamba_weights/run_001/best_epoch.bin \
+  --input-dir /home/hayepc/3D-bicycle-pose-estimation/data/validation_input/ \
+  --clip-id clip_evening_street_scene_1973818957_000043 \
   --out training_outputs/lifter_clip_viz
 ```
 

@@ -25,6 +25,7 @@ KEYPOINTS_2D_NAME = "keypoints_2d.jsonl"
 KEYPOINTS_3D_NAME = "keypoints_3d.npz"
 
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".bmp", ".webp")
+DEFAULT_LIFTER_CHECKPOINT = REPO_ROOT / "1_full_detection_pipeline" / "posemamba_X_best_epoch.bin"
 
 
 def iter_frame_paths(frames_dir: Path) -> list[Path]:
