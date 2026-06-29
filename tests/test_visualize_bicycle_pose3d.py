@@ -7,8 +7,9 @@ from pathlib import Path
 
 import numpy as np
 
-from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES
+from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX
 from data_generation_pipeline_tools.visualize_bicycle_pose3d import (
+    bicycle_crank_angle,
     load_motion,
     motion_to_images_or_video,
     subtract_root,
@@ -21,6 +22,26 @@ class VisualizeBicyclePose3DTests(unittest.TestCase):
         x = np.random.randn(t, j, 3).astype(np.float32)
         rr = subtract_root(x, root_index=0)
         np.testing.assert_allclose(rr[:, 0, :], 0.0, atol=1e-6)
+
+    def test_bicycle_crank_angle_at_neutral_pose(self) -> None:
+        kp = np.zeros((1, len(BICYCLE_KEYPOINT_NAMES), 3), dtype=np.float32)
+        kp[0, KEYPOINT_INDEX["k_bottom_bracket"]] = [0.0, 0.0, 0.0]
+        kp[0, KEYPOINT_INDEX["k_seat_stay"]] = [-0.30, -0.40, 0.0]
+        kp[0, KEYPOINT_INDEX["k_saddle"]] = [-0.30, -0.60, 0.0]
+        kp[0, KEYPOINT_INDEX["k_lower_head_tube"]] = [0.60, 0.00, 0.0]
+        kp[0, KEYPOINT_INDEX["k_upper_head_tube"]] = [0.50, -0.50, 0.0]
+        kp[0, KEYPOINT_INDEX["k_handlebar_middle"]] = [0.55, -0.55, 0.00]
+        kp[0, KEYPOINT_INDEX["k_rear_hub_left"]] = [-0.60, 0.30, -0.05]
+        kp[0, KEYPOINT_INDEX["k_rear_hub_right"]] = [-0.60, 0.30, 0.05]
+        kp[0, KEYPOINT_INDEX["k_rear_wheel_ground"]] = [-0.60, 0.65, 0.00]
+        kp[0, KEYPOINT_INDEX["k_front_hub_left"]] = [0.80, 0.30, -0.05]
+        kp[0, KEYPOINT_INDEX["k_front_hub_right"]] = [0.80, 0.30, 0.05]
+        kp[0, KEYPOINT_INDEX["k_front_wheel_ground"]] = [0.80, 0.65, 0.00]
+        kp[0, KEYPOINT_INDEX["k_left_pedal"]] = [0.00, 0.20, -0.20]
+        kp[0, KEYPOINT_INDEX["k_right_pedal"]] = [0.00, -0.20, 0.20]
+
+        crank = bicycle_crank_angle(kp)
+        self.assertAlmostEqual(float(np.rad2deg(crank[0])), 0.0, places=1)
 
     def test_motion_to_images_writes_frames_and_summary(self) -> None:
         t, j = 3, len(BICYCLE_KEYPOINT_NAMES)

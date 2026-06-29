@@ -74,7 +74,9 @@ data/bicycle_pose_dataset/splits.json
 data/*
 
 1_full_detection_pipeline/input_sequence/
+1_full_detection_pipeline/input_sequence_left_turn/
 1_full_detection_pipeline/output/
+1_full_detection_pipeline/output_left_turn/
 
 # Logs and local data
 *.log

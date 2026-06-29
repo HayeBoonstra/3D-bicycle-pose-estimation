@@ -78,6 +78,7 @@ _KP_HB_R = KEYPOINT_INDEX["k_handlebar_right"]
 _KP_RH_L = KEYPOINT_INDEX["k_rear_hub_left"]
 _KP_RH_R = KEYPOINT_INDEX["k_rear_hub_right"]
 _KP_RW_GND = KEYPOINT_INDEX["k_rear_wheel_ground"]
+_KP_LP = KEYPOINT_INDEX["k_left_pedal"]
 _SAGITTAL_PLANE_IDS = [_KP_BB, _KP_SEAT_STAY, _KP_SADDLE, _KP_UHT, _KP_LHT, _KP_HB_MID, _KP_RW_GND]
 _FRAME_PLANE_IDS = [_KP_BB, _KP_SEAT_STAY, _KP_SADDLE, _KP_UHT, _KP_LHT, _KP_RH_L, _KP_RH_R, _KP_RW_GND]
 
@@ -201,6 +202,23 @@ def bicycle_roll_angle(kpts: np.ndarray) -> np.ndarray:
     return np.arctan2(-ny, horiz).astype(np.float32)
 
 
+def bicycle_crank_angle(kpts: np.ndarray) -> np.ndarray:
+    """Signed crank angle (rad) from the left pedal arm in the sagittal plane.
+
+    Uses the bottom-bracket-to-left-pedal vector projected into the crank plane,
+    measured against the head-tube forward direction and crank axis
+    (``cross(crank_axis, forward)``). Matches the single crank DOF in MuJoCo.
+    """
+    crank_axis = _sagittal_plane_normal(kpts)
+    bb = kpts[:, _KP_BB, :]
+    forward = _safe_normalize(_project_to_plane(kpts[:, _KP_LHT, :] - bb, crank_axis))
+    in_plane_y = _safe_normalize(np.cross(crank_axis, forward))
+    arm = _project_to_plane(kpts[:, _KP_LP, :] - bb, crank_axis)
+    along_forward = np.sum(arm * forward, axis=-1)
+    along_in_plane_y = np.sum(arm * in_plane_y, axis=-1)
+    return _wrap_pi(np.arctan2(-along_forward, along_in_plane_y))
+
+
 def _wrap_pi(angle: np.ndarray) -> np.ndarray:
     return np.arctan2(np.sin(angle), np.cos(angle)).astype(np.float32)
 
@@ -310,6 +328,81 @@ def axis_limits_for_poses(*poses: np.ndarray, padding_ratio: float = 0.12) -> tu
     span = np.maximum(hi - lo, 1e-4)
     pad = span * padding_ratio
     return lo - pad, hi + pad
+
+
+def write_dynamics_angle_plots(
+    out_dir: Path,
+    *,
+    steer_pred_deg: np.ndarray,
+    roll_pred_deg: np.ndarray,
+    crank_pred_deg: np.ndarray,
+    steer_gt_deg: np.ndarray | None = None,
+    roll_gt_deg: np.ndarray | None = None,
+    crank_gt_deg: np.ndarray | None = None,
+) -> dict[str, str]:
+    """Write steer/roll/crank angle time-series plots (pred vs optional GT)."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    frames = np.arange(len(steer_pred_deg), dtype=np.int32)
+    paths: dict[str, str] = {}
+    has_gt = steer_gt_deg is not None and roll_gt_deg is not None and crank_gt_deg is not None
+
+    fig, (ax_steer_roll, ax_crank) = plt.subplots(2, 1, figsize=(10.0, 7.5), dpi=120, sharex=True)
+    ax_steer_roll.plot(frames, steer_pred_deg, color="#1f77b4", linewidth=1.8, label="steer pred (deg)")
+    ax_steer_roll.plot(frames, roll_pred_deg, color="#ff7f0e", linewidth=1.8, label="roll pred (deg)")
+    if has_gt:
+        ax_steer_roll.plot(
+            frames, steer_gt_deg, color="#1f77b4", linewidth=1.4, linestyle="--", label="steer gt (deg)"
+        )
+        ax_steer_roll.plot(
+            frames, roll_gt_deg, color="#ff7f0e", linewidth=1.4, linestyle="--", label="roll gt (deg)"
+        )
+    ax_steer_roll.set_ylabel("Angle (deg)")
+    ax_steer_roll.set_title("Steer / Roll vs Frame")
+    ax_steer_roll.grid(True, alpha=0.3)
+    ax_steer_roll.legend(loc="best", fontsize=9)
+
+    ax_crank.plot(frames, crank_pred_deg, color="#9467bd", linewidth=1.8, label="crank pred (deg)")
+    if has_gt:
+        ax_crank.plot(
+            frames, crank_gt_deg, color="#9467bd", linewidth=1.4, linestyle="--", label="crank gt (deg)"
+        )
+    ax_crank.set_xlabel("Frame")
+    ax_crank.set_ylabel("Angle (deg)")
+    ax_crank.set_title("Crank Angle vs Frame")
+    ax_crank.grid(True, alpha=0.3)
+    ax_crank.legend(loc="best", fontsize=9)
+    fig.tight_layout()
+    angles_path = out_dir / "dynamics_angles_plot.png"
+    fig.savefig(angles_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    paths["dynamics_angles_plot"] = str(angles_path)
+
+    if has_gt:
+        steer_err_deg = np.rad2deg(np.abs(_wrap_pi(np.deg2rad(steer_pred_deg - steer_gt_deg))))
+        roll_err_deg = np.rad2deg(np.abs(_wrap_pi(np.deg2rad(roll_pred_deg - roll_gt_deg))))
+        crank_err_deg = np.rad2deg(np.abs(_wrap_pi(np.deg2rad(crank_pred_deg - crank_gt_deg))))
+
+        fig, (ax_steer_roll_err, ax_crank_err) = plt.subplots(2, 1, figsize=(10.0, 7.5), dpi=120, sharex=True)
+        ax_steer_roll_err.plot(frames, steer_err_deg, color="#2ca02c", linewidth=1.8, label="|steer error| (deg)")
+        ax_steer_roll_err.plot(frames, roll_err_deg, color="#d62728", linewidth=1.8, label="|roll error| (deg)")
+        ax_steer_roll_err.set_ylabel("Absolute error (deg)")
+        ax_steer_roll_err.set_title("Steer / Roll Absolute Errors vs Frame")
+        ax_steer_roll_err.grid(True, alpha=0.3)
+        ax_steer_roll_err.legend(loc="best", fontsize=9)
+
+        ax_crank_err.plot(frames, crank_err_deg, color="#9467bd", linewidth=1.8, label="|crank error| (deg)")
+        ax_crank_err.set_xlabel("Frame")
+        ax_crank_err.set_ylabel("Absolute error (deg)")
+        ax_crank_err.set_title("Crank Absolute Error vs Frame")
+        ax_crank_err.grid(True, alpha=0.3)
+        ax_crank_err.legend(loc="best", fontsize=9)
+        fig.tight_layout()
+        errors_path = out_dir / "dynamics_angle_errors_plot.png"
+        fig.savefig(errors_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        paths["dynamics_angle_errors_plot"] = str(errors_path)
+
+    return paths
 
 
 def _style_axes(ax: plt.Axes) -> None:
@@ -427,6 +520,7 @@ def motion_to_images_or_video(
     reorient: str = "none",
     invert_z: bool = True,
     title: str | None = None,
+    write_dynamics_plots: bool = True,
 ) -> dict[str, Any]:
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -459,49 +553,81 @@ def motion_to_images_or_video(
 
     steer_pred = bicycle_steer_angle(pred)
     roll_pred = bicycle_roll_angle(pred)
+    crank_pred = bicycle_crank_angle(pred)
     steer_vel_pred = _angle_velocity(steer_pred)
     roll_vel_pred = _angle_velocity(roll_pred)
+    crank_vel_pred = _angle_velocity(crank_pred)
     meta["dynamics_pred"] = {
         "steer_deg": np.rad2deg(steer_pred).astype(np.float32).tolist(),
         "roll_deg": np.rad2deg(roll_pred).astype(np.float32).tolist(),
+        "crank_deg": np.rad2deg(crank_pred).astype(np.float32).tolist(),
         "steer_velocity_deg": np.rad2deg(steer_vel_pred).astype(np.float32).tolist(),
         "roll_velocity_deg": np.rad2deg(roll_vel_pred).astype(np.float32).tolist(),
+        "crank_velocity_deg": np.rad2deg(crank_vel_pred).astype(np.float32).tolist(),
     }
 
     steer_gt: np.ndarray | None = None
     roll_gt: np.ndarray | None = None
+    crank_gt: np.ndarray | None = None
     if gt is not None:
         steer_gt = bicycle_steer_angle(gt)
         roll_gt = bicycle_roll_angle(gt)
+        crank_gt = bicycle_crank_angle(gt)
         steer_vel_gt = _angle_velocity(steer_gt)
         roll_vel_gt = _angle_velocity(roll_gt)
+        crank_vel_gt = _angle_velocity(crank_gt)
         steer_err = np.abs(_wrap_pi(steer_pred - steer_gt))
         roll_err = np.abs(_wrap_pi(roll_pred - roll_gt))
+        crank_err = np.abs(_wrap_pi(crank_pred - crank_gt))
         steer_vel_err = np.abs(_wrap_pi(steer_vel_pred - steer_vel_gt))
         roll_vel_err = np.abs(_wrap_pi(roll_vel_pred - roll_vel_gt))
+        crank_vel_err = np.abs(_wrap_pi(crank_vel_pred - crank_vel_gt))
         meta["dynamics_gt"] = {
             "steer_deg": np.rad2deg(steer_gt).astype(np.float32).tolist(),
             "roll_deg": np.rad2deg(roll_gt).astype(np.float32).tolist(),
+            "crank_deg": np.rad2deg(crank_gt).astype(np.float32).tolist(),
             "steer_velocity_deg": np.rad2deg(steer_vel_gt).astype(np.float32).tolist(),
             "roll_velocity_deg": np.rad2deg(roll_vel_gt).astype(np.float32).tolist(),
+            "crank_velocity_deg": np.rad2deg(crank_vel_gt).astype(np.float32).tolist(),
         }
         meta["dynamics_error"] = {
             "steer_mae_deg": float(np.rad2deg(np.mean(steer_err))),
             "roll_mae_deg": float(np.rad2deg(np.mean(roll_err))),
+            "crank_mae_deg": float(np.rad2deg(np.mean(crank_err))),
             "steer_velocity_mae_deg": float(np.rad2deg(np.mean(steer_vel_err))) if steer_vel_err.size else 0.0,
             "roll_velocity_mae_deg": float(np.rad2deg(np.mean(roll_vel_err))) if roll_vel_err.size else 0.0,
+            "crank_velocity_mae_deg": float(np.rad2deg(np.mean(crank_vel_err))) if crank_vel_err.size else 0.0,
         }
+
+    if write_dynamics_plots:
+        steer_pred_deg = np.rad2deg(steer_pred).astype(np.float32)
+        roll_pred_deg = np.rad2deg(roll_pred).astype(np.float32)
+        crank_pred_deg = np.rad2deg(crank_pred).astype(np.float32)
+        steer_gt_deg = np.rad2deg(steer_gt).astype(np.float32) if steer_gt is not None else None
+        roll_gt_deg = np.rad2deg(roll_gt).astype(np.float32) if roll_gt is not None else None
+        crank_gt_deg = np.rad2deg(crank_gt).astype(np.float32) if crank_gt is not None else None
+        meta["dynamics_plots"] = write_dynamics_angle_plots(
+            out_dir,
+            steer_pred_deg=steer_pred_deg,
+            roll_pred_deg=roll_pred_deg,
+            crank_pred_deg=crank_pred_deg,
+            steer_gt_deg=steer_gt_deg,
+            roll_gt_deg=roll_gt_deg,
+            crank_gt_deg=crank_gt_deg,
+        )
 
     for t in tqdm(range(pred.shape[0]), desc="frames"):
         metrics_text = [
             f"steer(pred)={np.rad2deg(steer_pred[t]):+6.2f} deg",
             f"roll(pred)={np.rad2deg(roll_pred[t]):+6.2f} deg",
+            f"crank(pred)={np.rad2deg(crank_pred[t]):+6.2f} deg",
         ]
         if steer_gt is not None and roll_gt is not None:
             metrics_text.extend(
                 [
                     f"steer(gt)={np.rad2deg(steer_gt[t]):+6.2f} deg",
                     f"roll(gt)={np.rad2deg(roll_gt[t]):+6.2f} deg",
+                    f"crank(gt)={np.rad2deg(crank_gt[t]):+6.2f} deg",
                 ]
             )
         rgb = render_frame(
@@ -549,6 +675,11 @@ def parse_args() -> argparse.Namespace:
         help="Display-only axis remap so the bicycle appears upright (metrics use raw arrays).",
     )
     p.add_argument("--title", type=str, default=None, help="Optional figure title (e.g. MPJPE summary).")
+    p.add_argument(
+        "--no-dynamics-plots",
+        action="store_true",
+        help="Skip dynamics angle plots (steer/roll/crank, and errors when GT is available).",
+    )
     p.add_argument("--root-index", type=int, default=0, help="Root joint index (default: k_bottom_bracket).")
     p.set_defaults(subtract_root_pred=False, subtract_root_gt=True)
     p.add_argument(
@@ -605,6 +736,7 @@ def main() -> None:
         azim=args.azim,
         reorient=args.reorient,
         title=args.title,
+        write_dynamics_plots=not args.no_dynamics_plots,
     )
     print(json.dumps(meta, indent=2))
 

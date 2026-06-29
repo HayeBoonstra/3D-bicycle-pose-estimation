@@ -1,0 +1,51 @@
+{
+  "blender": {
+    "clip": "clip_tree_lined_scene_2010066764",
+    "frame_index": 211,
+    "source_image": "frames/frame_0211.png",
+    "size": [
+      1920,
+      1080
+    ],
+    "annotated_path": "blender_annotated.png"
+  },
+  "pipeline_output_dir": "/home/hayepc/3D-bicycle-pose-estimation/1_full_detection_pipeline/output",
+  "bbox_detection": {
+    "frame_id": 120,
+    "path": "bbox_detection.png"
+  },
+  "sequence_2d": [
+    {
+      "sequence_index": 0,
+      "frame_id": 50,
+      "path": "sequence_2d/frame_00.png"
+    },
+    {
+      "sequence_index": 1,
+      "frame_id": 120,
+      "path": "sequence_2d/frame_01.png"
+    },
+    {
+      "sequence_index": 2,
+      "frame_id": 190,
+      "path": "sequence_2d/frame_02.png"
+    }
+  ],
+  "sequence_3d": [
+    {
+      "sequence_index": 0,
+      "frame_id": 50,
+      "path": "sequence_3d/frame_00.png"
+    },
+    {
+      "sequence_index": 1,
+      "frame_id": 120,
+      "path": "sequence_3d/frame_01.png"
+    },
+    {
+      "sequence_index": 2,
+      "frame_id": 190,
+      "path": "sequence_3d/frame_02.png"
+    }
+  ]
+}
