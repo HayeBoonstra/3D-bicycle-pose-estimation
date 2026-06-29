@@ -107,17 +107,26 @@ def plot_dynamics_timeseries(metrics: dict[str, Any], out_path: Path, max_frames
         return
     n = min(max_frames, len(ts.get("pred_steer_deg", [])))
     t = np.arange(n)
-    fig, axes = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
+    clip_label = ts.get("clip_id")
+    clip_suffix = f" ({clip_label})" if clip_label else ""
+
+    fig, axes = plt.subplots(2, 1, figsize=(10, 6.0), sharex=True)
+
     axes[0].plot(t, ts["pred_steer_deg"][:n], label="pred", alpha=0.8)
-    axes[0].plot(t, ts["gt_steer_deg"][:n], label="gt", alpha=0.8)
+    axes[0].plot(t, ts["gt_steer_deg"][:n], label="gt MuJoCo", alpha=0.8)
     axes[0].set_ylabel("Steer (deg)")
+    axes[0].set_title(f"Steer vs MuJoCo GT{clip_suffix}")
     axes[0].legend()
-    axes[0].set_title("Steer angle time series")
+    axes[0].grid(True, alpha=0.3)
+
     axes[1].plot(t, ts["pred_roll_deg"][:n], label="pred", alpha=0.8)
     axes[1].plot(t, ts["gt_roll_deg"][:n], label="gt", alpha=0.8)
     axes[1].set_ylabel("Roll (deg)")
     axes[1].set_xlabel("Frame")
+    axes[1].set_title(f"Roll (kinematic pred vs kinematic GT){clip_suffix}")
     axes[1].legend()
+    axes[1].grid(True, alpha=0.3)
+
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)

@@ -23,6 +23,24 @@ class VisualizeBicyclePose3DTests(unittest.TestCase):
         rr = subtract_root(x, root_index=0)
         np.testing.assert_allclose(rr[:, 0, :], 0.0, atol=1e-6)
 
+    def test_bicycle_steer_matches_posemamba_loss(self) -> None:
+        from data_generation_pipeline_tools.bicycle_dynamics_angles import bicycle_steer_angle
+        from PoseMamba.lib.model.loss import bicycle_steer_angle as steer_loss
+        import torch
+
+        kp = np.zeros((5, len(BICYCLE_KEYPOINT_NAMES), 3), dtype=np.float64)
+        kp[:, KEYPOINT_INDEX["k_bottom_bracket"]] = [0.0, 0.0, 0.0]
+        kp[:, KEYPOINT_INDEX["k_lower_head_tube"]] = [0.60, 0.00, 0.0]
+        kp[:, KEYPOINT_INDEX["k_upper_head_tube"]] = [0.50, -0.50, 0.0]
+        kp[:, KEYPOINT_INDEX["k_rear_hub_left"]] = [-0.60, 0.30, -0.05]
+        kp[:, KEYPOINT_INDEX["k_rear_hub_right"]] = [-0.60, 0.30, 0.05]
+        kp[:, KEYPOINT_INDEX["k_front_hub_left"]] = [0.80, 0.30, -0.05]
+        kp[:, KEYPOINT_INDEX["k_front_hub_right"]] = [0.80, 0.30, 0.05]
+
+        np_steer = bicycle_steer_angle(kp.astype(np.float32))
+        torch_steer = steer_loss(torch.from_numpy(kp).unsqueeze(0)).squeeze(0).numpy()
+        np.testing.assert_allclose(np_steer, torch_steer, rtol=0, atol=1e-5)
+
     def test_bicycle_crank_angle_at_neutral_pose(self) -> None:
         kp = np.zeros((1, len(BICYCLE_KEYPOINT_NAMES), 3), dtype=np.float32)
         kp[0, KEYPOINT_INDEX["k_bottom_bracket"]] = [0.0, 0.0, 0.0]

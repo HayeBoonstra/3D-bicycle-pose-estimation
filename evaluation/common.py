@@ -9,12 +9,81 @@ import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+# Secondary SSD layout used by data_generation_pipeline_tools/setup_secondary_data_disk.sh
+SSD_ROOT = Path("/mnt/SmallSSD/3D-bicycle-pose-estimation")
+
+
+def resolve_data_path(
+    relative: str,
+    *,
+    env_var: str | None = None,
+) -> Path:
+    """Resolve a data path: env override, repo data/, then SSD mirror."""
+    if env_var:
+        override = __import__("os").environ.get(env_var)
+        if override:
+            p = Path(override)
+            if p.is_dir():
+                return p.resolve()
+            raise FileNotFoundError(f"{env_var} is not a directory: {p}")
+
+    repo_path = (REPO_ROOT / relative).resolve()
+    if repo_path.is_dir():
+        return repo_path
+
+    ssd_path = (SSD_ROOT / relative.split("data/", 1)[-1]).resolve()
+    if ssd_path.is_dir():
+        return ssd_path
+
+    return repo_path  # fall back for clearer error messages
+
+
+def default_raw_root() -> Path:
+    return resolve_data_path("data/raw_blender_posemamba", env_var="RAW_ROOT")
+
+
+def default_sequence_root() -> Path:
+    return resolve_data_path("data/posemamba_training_sequences", env_var="DATA_ROOT")
+
+
+def default_detected2d_test_dir() -> Path:
+    return default_sequence_root() / "PoseMamba_f243s81_detected2d/BICYCLE/test"
+
 # Joint groups for per-group error reporting.
 JOINT_GROUPS = {
     "wheels": [8, 9, 10, 11, 12, 13, 14, 15],
     "frame": [0, 1, 2, 3, 4],
     "steering": [5, 6, 7, 16, 17],
 }
+
+# Clips above this per-clip MPJPE are excluded from aggregate 3D/dynamics metrics
+# (likely out-of-distribution scenes absent from training).
+DEFAULT_MAX_CLIP_MPJPE_MM = 70.0
+
+
+def unique_clip_ids_ordered(clip_ids) -> list[str]:
+    ids: list[str] = []
+    for c in clip_ids:
+        s = str(c)
+        if s not in ids:
+            ids.append(s)
+    return ids
+
+
+def frame_mask_for_clips(clip_ids, accepted_clip_ids: set[str]) -> np.ndarray:
+    accepted = {str(c) for c in accepted_clip_ids}
+    return np.array([str(c) in accepted for c in clip_ids])
+
+
+def first_clip_mask(clip_ids, accepted_clip_ids: set[str] | None = None):
+    """Return (clip_id, boolean frame mask) for the first clip in timeline order."""
+    if clip_ids is None:
+        return None, None
+    accepted = None if accepted_clip_ids is None else {str(c) for c in accepted_clip_ids}
+    for cid in unique_clip_ids_ordered(clip_ids):
+        if accepted is None or cid in accepted:
+            return cid, np.array([str(c) == cid for c in clip_ids])
+    return None, None
 
 
 def mm_from_m(value_m: float) -> float:

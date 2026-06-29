@@ -71,16 +71,16 @@ _KP_LHT = KEYPOINT_INDEX["k_lower_head_tube"]
 _KP_HB_MID = KEYPOINT_INDEX["k_handlebar_middle"]
 _KP_FH_L = KEYPOINT_INDEX["k_front_hub_left"]
 _KP_FH_R = KEYPOINT_INDEX["k_front_hub_right"]
-_KP_FW_BACK = KEYPOINT_INDEX["k_front_wheel_back"]
-_KP_FW_FRONT = KEYPOINT_INDEX["k_front_wheel_front"]
-_KP_HB_L = KEYPOINT_INDEX["k_handlebar_left"]
-_KP_HB_R = KEYPOINT_INDEX["k_handlebar_right"]
 _KP_RH_L = KEYPOINT_INDEX["k_rear_hub_left"]
 _KP_RH_R = KEYPOINT_INDEX["k_rear_hub_right"]
 _KP_RW_GND = KEYPOINT_INDEX["k_rear_wheel_ground"]
 _KP_LP = KEYPOINT_INDEX["k_left_pedal"]
 _SAGITTAL_PLANE_IDS = [_KP_BB, _KP_SEAT_STAY, _KP_SADDLE, _KP_UHT, _KP_LHT, _KP_HB_MID, _KP_RW_GND]
-_FRAME_PLANE_IDS = [_KP_BB, _KP_SEAT_STAY, _KP_SADDLE, _KP_UHT, _KP_LHT, _KP_RH_L, _KP_RH_R, _KP_RW_GND]
+
+from data_generation_pipeline_tools.bicycle_dynamics_angles import (  # noqa: E402
+    bicycle_roll_angle,
+    bicycle_steer_angle,
+)
 
 
 def skeleton_edge_indices() -> list[tuple[int, int]]:
@@ -108,98 +108,8 @@ def _sagittal_plane_normal(kpts: np.ndarray) -> np.ndarray:
     return _safe_normalize(_signed_oriented(n, ref))
 
 
-def _fit_plane_normal(kpts: np.ndarray, ids: list[int], orient_ref: np.ndarray) -> np.ndarray:
-    pts = kpts[:, ids, :]  # (T, K, 3)
-    centered = pts - pts.mean(axis=1, keepdims=True)
-    cov = np.matmul(np.transpose(centered, (0, 2, 1)), centered)  # (T, 3, 3)
-    eigvals, eigvecs = np.linalg.eigh(cov)
-    min_idx = np.argmin(eigvals, axis=-1)
-    n = eigvecs[np.arange(eigvecs.shape[0]), :, min_idx]
-    return _safe_normalize(_signed_oriented(n, orient_ref))
-
-
 def _project_to_plane(v: np.ndarray, n: np.ndarray) -> np.ndarray:
     return v - np.sum(v * n, axis=-1, keepdims=True) * n
-
-
-def _signed_angle_in_plane(a: np.ndarray, b: np.ndarray, n: np.ndarray) -> np.ndarray:
-    a_u = _safe_normalize(a)
-    b_u = _safe_normalize(b)
-    sin_part = np.sum(np.cross(a_u, b_u, axis=-1) * n, axis=-1)
-    cos_part = np.sum(a_u * b_u, axis=-1)
-    return np.arctan2(sin_part, cos_part).astype(np.float32)
-
-
-def _circular_mean(angles_rad: np.ndarray) -> np.ndarray:
-    # angles_rad: (K, T)
-    return np.arctan2(np.mean(np.sin(angles_rad), axis=0), np.mean(np.cos(angles_rad), axis=0)).astype(np.float32)
-
-
-def bicycle_steer_angle(kpts: np.ndarray) -> np.ndarray:
-    """Signed steering angle (rad) from frame-plane intersections.
-
-    Method:
-    1) Fit a global frame plane from frame-rigid keypoints.
-    2) Build a reference forward direction in that plane.
-    3) Build front-assembly planes from steering axis + wheel axis and
-       steering axis + handlebar axis.
-    4) Intersect each assembly plane with the frame plane, then compute signed
-       in-plane angle vs. frame-forward.
-    5) Return circular mean of wheel-based and handlebar-based angles.
-    """
-    rh_l = kpts[:, _KP_RH_L, :]
-    rh_r = kpts[:, _KP_RH_R, :]
-    ht_u = kpts[:, _KP_UHT, :]
-    ht_l = kpts[:, _KP_LHT, :]
-
-    # Frame plane normal and consistent orientation (lateral +X frame direction).
-    ref_lateral = rh_r - rh_l
-    n_frame = _fit_plane_normal(kpts, _FRAME_PLANE_IDS, ref_lateral)
-
-    # Reference "forward" in frame plane: rear axle center -> head-tube center.
-    rear_center = 0.5 * (rh_l + rh_r)
-    head_center = 0.5 * (ht_u + ht_l)
-    fwd = _project_to_plane(head_center - rear_center, n_frame)
-    fwd = _safe_normalize(fwd)
-
-    # Steering axis at the head tube.
-    e = _safe_normalize(ht_u - ht_l)
-
-    # Two steering observables that should co-vary with fork steering.
-    wheel_axis = _safe_normalize(kpts[:, _KP_FH_R, :] - kpts[:, _KP_FH_L, :])
-    # Blend hub axle and wheel front/back for additional robustness.
-    wheel_diam_axis = _safe_normalize(kpts[:, _KP_FW_FRONT, :] - kpts[:, _KP_FW_BACK, :])
-    wheel_axis = _safe_normalize(wheel_axis + 0.5 * wheel_diam_axis)
-    handlebar_axis = _safe_normalize(kpts[:, _KP_HB_R, :] - kpts[:, _KP_HB_L, :])
-
-    # Plane normals for planes spanned by {steer axis, observable axis}.
-    n_wheel_plane = _safe_normalize(np.cross(e, wheel_axis, axis=-1))
-    n_bar_plane = _safe_normalize(np.cross(e, handlebar_axis, axis=-1))
-
-    # Intersection line directions with frame plane.
-    d_wheel = _safe_normalize(np.cross(n_frame, n_wheel_plane, axis=-1))
-    d_bar = _safe_normalize(np.cross(n_frame, n_bar_plane, axis=-1))
-    # Intersections define a wheel/fork "forward" line but can be 180-deg ambiguous.
-    # Resolve orientation by matching each line to the projected front direction.
-    front_ref = _project_to_plane(head_center - rear_center, n_frame)
-    d_wheel = _signed_oriented(d_wheel, front_ref)
-    d_bar = _signed_oriented(d_bar, front_ref)
-
-    ang_wheel = _signed_angle_in_plane(front_ref, d_wheel, n_frame)
-    ang_bar = _signed_angle_in_plane(front_ref, d_bar, n_frame)
-    # The plane-intersection line is orthogonal to the steering observable axis,
-    # introducing a ±90deg baseline. Remove that constant offset so straight
-    # steering is reported near 0deg.
-    ang_wheel = _wrap_pi(ang_wheel + np.deg2rad(90.0))
-    ang_bar = _wrap_pi(ang_bar + np.deg2rad(90.0))
-    return _circular_mean(np.stack([ang_wheel, ang_bar], axis=0))
-
-
-def bicycle_roll_angle(kpts: np.ndarray) -> np.ndarray:
-    n = _sagittal_plane_normal(kpts)
-    nx, ny, nz = n[:, 0], n[:, 1], n[:, 2]
-    horiz = np.sqrt(nx * nx + nz * nz + _DYN_EPS)
-    return np.arctan2(-ny, horiz).astype(np.float32)
 
 
 def bicycle_crank_angle(kpts: np.ndarray) -> np.ndarray:

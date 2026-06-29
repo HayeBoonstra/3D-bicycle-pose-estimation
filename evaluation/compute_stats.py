@@ -14,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from evaluation.common import ensure_dir  # noqa: E402
+from evaluation.common import DEFAULT_MAX_CLIP_MPJPE_MM, ensure_dir  # noqa: E402
 from evaluation.metrics import (  # noqa: E402
     compute_capacity_frontier,
     compute_detection_metrics,
@@ -73,6 +73,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--results-dir", type=Path, default=REPO_ROOT / "results")
     p.add_argument("--stage12", type=Path, default=None, help="Path to stage12_records.jsonl")
     p.add_argument("--experiments", type=Path, default=REPO_ROOT / "experiments/configs/experiments.json")
+    p.add_argument(
+        "--max-clip-mpjpe-mm",
+        type=float,
+        default=DEFAULT_MAX_CLIP_MPJPE_MM,
+        help="Exclude clips with per-clip MPJPE above this threshold from aggregates (default: 70 mm).",
+    )
     return p.parse_args()
 
 
@@ -113,8 +119,13 @@ def main() -> None:
         if exp_name in experiments_manifest:
             metrics["config"] = experiments_manifest[exp_name]
 
-        metrics["pose3d"] = compute_pose3d_metrics(npz)
-        metrics["dynamics"] = compute_dynamics_metrics(npz)
+        metrics["pose3d"] = compute_pose3d_metrics(npz, max_clip_mpjpe_mm=args.max_clip_mpjpe_mm)
+        accepted = set(metrics["pose3d"].get("clip_filter", {}).get("accepted_clip_ids", []))
+        metrics["dynamics"] = compute_dynamics_metrics(
+            npz,
+            accepted_clip_ids=accepted,
+            max_clip_mpjpe_mm=args.max_clip_mpjpe_mm,
+        )
 
         exp_preset = exp_name.replace("capacity_", "").upper()
         if exp_preset in capacity_frontier:

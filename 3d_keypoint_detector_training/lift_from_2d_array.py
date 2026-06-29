@@ -17,13 +17,18 @@ _REPO_ROOT = _SCRIPT_DIR.parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
 
-from posemamba_bicycle_io import load_training_config, to_batch_2d
+from posemamba_bicycle_io import (
+    load_training_config,
+    resolve_training_config_path,
+    to_batch_2d,
+)
 
 
 def load_posemamba_lifter(
     checkpoint_path: Path,
     *,
     fallback_config: Path | None = None,
+    experiment_name: str | None = None,
     posemamba_root: Path | None = None,
     depth_override: int | None = None,
     dim_feat_override: int | None = None,
@@ -36,7 +41,13 @@ def load_posemamba_lifter(
 
     if fallback_config is None:
         fallback_config = _SCRIPT_DIR / "PoseMamba_train_bicycle.generated.yaml"
-    fallback_cfg = fallback_config.resolve()
+    fallback_cfg = resolve_training_config_path(
+        ckpt_path,
+        fallback_config.resolve(),
+        repo_root=_REPO_ROOT,
+        experiment_name=experiment_name,
+    )
+    print(f"[posemamba] config={fallback_cfg} checkpoint={ckpt_path.name}")
 
     if posemamba_root is None:
         posemamba_root = _REPO_ROOT / "PoseMamba"

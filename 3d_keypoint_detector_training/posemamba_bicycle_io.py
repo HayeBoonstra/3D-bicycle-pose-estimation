@@ -204,8 +204,8 @@ def export_plain_config(cfg: Any, output_path: Path) -> Path:
     return output_path
 
 
-def load_training_config(checkpoint_path: Path, fallback_config: Path) -> Any:
-    """Load model config from checkpoint dir, or plain YAML fallback."""
+def _load_config_yaml(path: Path) -> Any | None:
+    """Load a YAML config via PoseMamba get_config or pickle EasyDict."""
     import sys
 
     posemamba_root = Path(__file__).resolve().parents[1] / "PoseMamba"
@@ -213,21 +213,76 @@ def load_training_config(checkpoint_path: Path, fallback_config: Path) -> Any:
         sys.path.insert(0, str(posemamba_root))
     from lib.utils.tools import get_config
 
-    ckpt_cfg = checkpoint_path.resolve().parent / "config.yaml"
-    if ckpt_cfg.is_file():
-        text = ckpt_cfg.read_text(encoding="utf-8")
-        if "python/object" in text or "easydict.EasyDict" in text:
-            cfg = _easydict_checkpoint_config(ckpt_cfg)
-        else:
-            try:
-                cfg = get_config(str(ckpt_cfg))
-            except Exception:
-                cfg = None
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    if "python/object" in text or "easydict.EasyDict" in text:
+        return _easydict_checkpoint_config(path)
+    try:
+        return get_config(str(path))
+    except Exception:
+        return None
+
+
+def resolve_training_config_path(
+    checkpoint_path: Path,
+    fallback_config: Path,
+    *,
+    repo_root: Path | None = None,
+    experiment_name: str | None = None,
+) -> Path:
+    """Pick the YAML that matches checkpoint architecture (ablation / capacity runs)."""
+    ckpt = checkpoint_path.resolve()
+    fallback = fallback_config.resolve()
+    if repo_root is None:
+        repo_root = Path(__file__).resolve().parents[1]
+
+    # Sibling configs written by training (ablations use train_config.yaml).
+    for name in ("config.yaml", "train_config.yaml"):
+        sibling = ckpt.parent / name
+        if sibling.is_file():
+            return sibling
+
+    candidates: list[str] = []
+    if experiment_name:
+        candidates.append(experiment_name)
+    if ckpt.name == "best_epoch.bin":
+        candidates.append(ckpt.parent.name)
+
+    stem = ckpt.stem.lower()
+    if "posemamba_x" in stem or stem.startswith("posemamba_x"):
+        candidates.append("capacity_x")
+
+    # Dedupe while preserving order
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for name in candidates:
+        key = name.lower()
+        if key not in seen:
+            seen.add(key)
+            ordered.append(name)
+
+    exp_dir = repo_root / "experiments" / "configs"
+    for name in ordered:
+        exp_cfg = exp_dir / f"{name}.yaml"
+        if exp_cfg.is_file():
+            return exp_cfg
+
+    return fallback
+
+
+def load_training_config(checkpoint_path: Path, fallback_config: Path) -> Any:
+    """Load model config from checkpoint dir, or plain YAML fallback."""
+    ckpt = checkpoint_path.resolve()
+    for name in ("config.yaml", "train_config.yaml"):
+        cfg = _load_config_yaml(ckpt.parent / name)
         if cfg is not None:
             _apply_bicycle_config_overrides(cfg)
             return cfg
 
-    cfg = get_config(str(fallback_config.resolve()))
+    cfg = _load_config_yaml(fallback_config.resolve())
+    if cfg is None:
+        raise FileNotFoundError(f"Could not load training config: {fallback_config}")
     _apply_bicycle_config_overrides(cfg)
     return cfg
 

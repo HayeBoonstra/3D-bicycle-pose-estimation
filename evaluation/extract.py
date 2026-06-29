@@ -21,12 +21,11 @@ if str(REPO_ROOT) not in sys.path:
 
 from lift_from_2d_array import lift_2d_to_3d, load_posemamba_lifter, squeeze_batch  # noqa: E402
 from posemamba_bicycle_io import Input2DMode, load_sequence_pkl, prepare_2d, prepare_gt_3d  # noqa: E402
-from data_generation_pipeline_tools.visualize_bicycle_pose3d import (  # noqa: E402
-    bicycle_crank_angle,
+from data_generation_pipeline_tools.bicycle_dynamics_angles import (  # noqa: E402
     bicycle_roll_angle,
     bicycle_steer_angle,
 )
-from evaluation.common import ensure_dir  # noqa: E402
+from evaluation.common import default_detected2d_test_dir, ensure_dir  # noqa: E402
 
 
 def _group_test_windows(test_dir: Path) -> dict[str, list[Path]]:
@@ -46,7 +45,8 @@ def _group_test_windows(test_dir: Path) -> dict[str, list[Path]]:
 
 def _stitch_windows(windows: list[tuple[int, int, np.ndarray]]) -> tuple[np.ndarray, np.ndarray]:
     full_t = max(end for _st, end, _ in windows)
-    acc = np.zeros((full_t, windows[0][2].shape[1], 3), dtype=np.float64)
+    feat_shape = windows[0][2].shape[1:]
+    acc = np.zeros((full_t, *feat_shape), dtype=np.float64)
     cnt = np.zeros(full_t, dtype=np.float64)
     for st, end, arr in windows:
         t_len = min(len(arr), end - st)
@@ -56,7 +56,8 @@ def _stitch_windows(windows: list[tuple[int, int, np.ndarray]]) -> tuple[np.ndar
             cnt[t] += 1.0
     support = np.where(cnt > 0.0)[0]
     out = np.zeros_like(acc, dtype=np.float32)
-    out[support] = (acc[support] / cnt[support, None, None]).astype(np.float32)
+    cnt_bc = cnt[support].reshape(-1, *([1] * (acc.ndim - 1)))
+    out[support] = (acc[support] / cnt_bc).astype(np.float32)
     return out[support], support.astype(np.int32)
 
 
@@ -80,7 +81,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--test-dir",
         type=Path,
-        default=REPO_ROOT / "data/posemamba_training_sequences/PoseMamba_f243s81_detected2d/BICYCLE/test",
+        default=None,
+        help="BICYCLE test split pickles (default: auto-detect repo or SSD)",
     )
     p.add_argument("--out", type=Path, default=REPO_ROOT / "results")
     p.add_argument("--experiment-name", type=str, default=None)
@@ -91,10 +93,15 @@ def main() -> None:
     args = parse_args()
     ckpt = args.checkpoint.resolve()
     exp_name = args.experiment_name or ckpt.parent.name
-    out_dir = ensure_dir(args.out / exp_name)
+    out_dir = ensure_dir(args.out.resolve() / exp_name)
+    test_dir = (args.test_dir or default_detected2d_test_dir()).resolve()
 
-    model, cfg, device = load_posemamba_lifter(ckpt, fallback_config=args.config.resolve())
-    groups = _group_test_windows(args.test_dir.resolve())
+    model, cfg, device = load_posemamba_lifter(
+        ckpt,
+        fallback_config=args.config.resolve(),
+        experiment_name=exp_name,
+    )
+    groups = _group_test_windows(test_dir)
 
     all_pred: list[np.ndarray] = []
     all_gt: list[np.ndarray] = []

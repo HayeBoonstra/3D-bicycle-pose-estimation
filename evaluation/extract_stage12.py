@@ -22,7 +22,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX  # noqa: E402
 from posemamba_bicycle_io import load_sequence_pkl  # noqa: E402
-from evaluation.common import ensure_dir  # noqa: E402
+from evaluation.common import default_detected2d_test_dir, default_raw_root, ensure_dir  # noqa: E402
 
 DETECTED_PREFIX = "keypoints_2d_detected_frame_"
 
@@ -159,20 +159,39 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--test-dir",
         type=Path,
-        default=REPO_ROOT / "data/posemamba_training_sequences/PoseMamba_f243s81_detected2d/BICYCLE/test",
+        default=None,
+        help="BICYCLE test split pickles (default: auto-detect repo or SSD)",
     )
-    p.add_argument("--raw-root", type=Path, default=REPO_ROOT / "data/raw_blender_posemamba")
+    p.add_argument(
+        "--raw-root",
+        type=Path,
+        default=None,
+        help="Raw Blender clip root (default: RAW_ROOT env, repo data/, or /mnt/SmallSSD/...)",
+    )
     p.add_argument("--out", type=Path, default=REPO_ROOT / "results/stage12_records.jsonl")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    clip_ids = _test_clip_ids(args.test_dir.resolve())
-    scene_map, pattern_map = _load_manifests(args.raw_root.resolve())
+    raw_root = (args.raw_root or default_raw_root()).resolve()
+    test_dir = (args.test_dir or default_detected2d_test_dir()).resolve()
+    if not raw_root.is_dir():
+        raise FileNotFoundError(
+            f"raw clip root not found: {raw_root}\n"
+            "  Set RAW_ROOT=/mnt/SmallSSD/3D-bicycle-pose-estimation/raw_blender_posemamba"
+        )
+    if not test_dir.is_dir():
+        raise FileNotFoundError(
+            f"test pickle dir not found: {test_dir}\n"
+            "  Set DATA_ROOT=/mnt/SmallSSD/3D-bicycle-pose-estimation/posemamba_training_sequences"
+        )
+
+    clip_ids = _test_clip_ids(test_dir)
+    scene_map, pattern_map = _load_manifests(raw_root)
 
     all_records: list[dict[str, Any]] = []
-    for clip_dir in sorted(args.raw_root.iterdir()):
+    for clip_dir in sorted(raw_root.iterdir()):
         if not clip_dir.is_dir():
             continue
         if clip_dir.name not in clip_ids:
@@ -187,6 +206,8 @@ def main() -> None:
         for rec in all_records:
             f.write(json.dumps(rec) + "\n")
 
+    print(f"[extract_stage12] raw_root={raw_root}")
+    print(f"[extract_stage12] test_dir={test_dir}")
     print(f"[extract_stage12] wrote {out_path} ({len(all_records)} frames, {len(clip_ids)} test clips)")
 
 

@@ -2,15 +2,22 @@
 # End-to-end results pipeline: extract -> stats -> figures
 #
 # Usage:
-#   ./evaluation/run_all.sh                          # stage12 + stats + figures
-#   ./evaluation/run_all.sh posemamba_weights/capacity_b/best_epoch.bin
-#   CHECKPOINT=... ./evaluation/run_all.sh
+#   ./evaluation/run_all.sh
+#   CHECKPOINT=path/to/best_epoch.bin ./evaluation/run_all.sh
+#
+# Data paths (optional; auto-detects /mnt/SmallSSD/3D-bicycle-pose-estimation if repo data/ missing):
+#   RAW_ROOT=/mnt/SmallSSD/3D-bicycle-pose-estimation/raw_blender_posemamba
+#   DATA_ROOT=/mnt/SmallSSD/3D-bicycle-pose-estimation/posemamba_training_sequences
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 CONDA_ENV="${CONDA_ENV:-posemamba}"
 RESULTS_DIR="${RESULTS_DIR:-${REPO_ROOT}/results}"
 CHECKPOINT="${1:-${CHECKPOINT:-}}"
+RAW_ROOT="${RAW_ROOT:-}"
+DATA_ROOT="${DATA_ROOT:-}"
+
+export RAW_ROOT DATA_ROOT
 
 run_py() {
   if [[ "${CONDA_DEFAULT_ENV:-}" == "${CONDA_ENV}" ]]; then
@@ -51,6 +58,14 @@ run_py "${REPO_ROOT}/evaluation/compute_stats.py" --results-dir "${RESULTS_DIR}"
 
 echo "[run_all] generating figures"
 run_py "${REPO_ROOT}/evaluation/make_figures.py" --results-dir "${RESULTS_DIR}"
+
+if [[ -n "${CHECKPOINT}" ]]; then
+  exp_name="$(basename "$(dirname "${CHECKPOINT}")")"
+  echo "[run_all] dynamics example video for ${exp_name}"
+  run_py "${REPO_ROOT}/evaluation/make_dynamics_example_video.py" \
+    --results-dir "${RESULTS_DIR}" \
+    --experiment "${exp_name}" || echo "[warn] dynamics example video failed (non-fatal)"
+fi
 
 if [[ -n "${CHECKPOINT}" ]]; then
   echo "[run_all] SSM coupling map (optional)"

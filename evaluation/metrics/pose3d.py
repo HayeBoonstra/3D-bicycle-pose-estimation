@@ -6,7 +6,13 @@ from typing import Any
 
 import numpy as np
 
-from evaluation.common import JOINT_GROUPS, group_mean, mm_from_m
+from evaluation.common import (
+    DEFAULT_MAX_CLIP_MPJPE_MM,
+    JOINT_GROUPS,
+    frame_mask_for_clips,
+    group_mean,
+    mm_from_m,
+)
 
 
 def n_mpjpe_numpy(pred: np.ndarray, gt: np.ndarray) -> float:
@@ -47,13 +53,7 @@ def mpjae(pred: np.ndarray, gt: np.ndarray) -> float:
     return float(np.linalg.norm(a_pred - a_gt, axis=-1).mean())
 
 
-def compute_pose3d_metrics(preds_npz_path: str | Any) -> dict[str, Any]:
-    """Compute 3D metrics from extract.py preds_3d.npz."""
-    data = np.load(preds_npz_path, allow_pickle=True)
-    pred = np.asarray(data["pred"], dtype=np.float32)
-    gt = np.asarray(data["gt"], dtype=np.float32)
-
-    # Import PoseMamba metrics
+def _load_mpjpe_fns():
     import sys
     from pathlib import Path
 
@@ -63,26 +63,20 @@ def compute_pose3d_metrics(preds_npz_path: str | Any) -> dict[str, Any]:
         sys.path.insert(0, str(posemamba_root))
     from lib.model.loss import mpjpe, p_mpjpe
 
-    pred_rr = pred - pred[:, 0:1, :]
-    gt_rr = gt - gt[:, 0:1, :]
+    return mpjpe, p_mpjpe
 
-    mpjpe_m = float(np.mean(mpjpe(pred_rr[None, ...], gt_rr[None, ...])))
-    pmpjpe_m = float(np.mean(p_mpjpe(pred_rr, gt_rr)))
+
+def _aggregate_pose3d(
+    pred_rr: np.ndarray,
+    gt_rr: np.ndarray,
+    mpjpe_fn,
+    p_mpjpe_fn,
+) -> dict[str, Any]:
+    mpjpe_m = float(np.mean(mpjpe_fn(pred_rr[None, ...], gt_rr[None, ...])))
+    pmpjpe_m = float(np.mean(p_mpjpe_fn(pred_rr, gt_rr)))
     nmpjpe_m = n_mpjpe_numpy(pred_rr, gt_rr)
-
     per_joint = mpjpe_per_joint(pred_rr, gt_rr)
-    per_clip = []
-    clip_ids = data.get("clip_ids")
-    if clip_ids is not None:
-        clip_ids = list(clip_ids)
-        unique_clips = sorted(set(clip_ids))
-        for cid in unique_clips:
-            mask = np.array([c == cid for c in clip_ids])
-            pc = float(np.mean(mpjpe(pred_rr[mask][None, ...], gt_rr[mask][None, ...])))
-            per_clip.append({"clip_id": str(cid), "mpjpe_m": pc, "mpjpe_mm": mm_from_m(pc)})
-
-    per_clip_mpjpe = [c["mpjpe_m"] for c in per_clip]
-    metrics: dict[str, Any] = {
+    return {
         "mpjpe_m": mpjpe_m,
         "mpjpe_mm": mm_from_m(mpjpe_m),
         "p_mpjpe_m": pmpjpe_m,
@@ -95,18 +89,100 @@ def compute_pose3d_metrics(preds_npz_path: str | Any) -> dict[str, Any]:
         "per_joint_mpjpe_m": {str(j): float(per_joint[j]) for j in range(len(per_joint))},
         "per_joint_mpjpe_mm": {str(j): mm_from_m(float(per_joint[j])) for j in range(len(per_joint))},
         "group_mpjpe_mm": {g: mm_from_m(group_mean(per_joint, g)) for g in JOINT_GROUPS},
-        "per_clip": per_clip,
-        "median_mpjpe_mm": mm_from_m(float(np.median(per_clip_mpjpe))) if per_clip_mpjpe else None,
-        "iqr_mpjpe_mm": mm_from_m(float(np.percentile(per_clip_mpjpe, 75) - np.percentile(per_clip_mpjpe, 25)))
-        if per_clip_mpjpe
-        else None,
+        "num_frames": int(pred_rr.shape[0]),
     }
 
-    # MPJPE vs clip position (normalized timeline)
-    n = pred_rr.shape[0]
+
+def compute_pose3d_metrics(
+    preds_npz_path: str | Any,
+    *,
+    max_clip_mpjpe_mm: float = DEFAULT_MAX_CLIP_MPJPE_MM,
+) -> dict[str, Any]:
+    """Compute 3D metrics from extract.py preds_3d.npz.
+
+    Clips with per-clip MPJPE above ``max_clip_mpjpe_mm`` are excluded from
+    headline aggregates (treated as likely out-of-distribution / erroneous).
+    """
+    data = np.load(preds_npz_path, allow_pickle=True)
+    pred = np.asarray(data["pred"], dtype=np.float32)
+    gt = np.asarray(data["gt"], dtype=np.float32)
+    mpjpe_fn, p_mpjpe_fn = _load_mpjpe_fns()
+
+    pred_rr = pred - pred[:, 0:1, :]
+    gt_rr = gt - gt[:, 0:1, :]
+
+    per_clip: list[dict[str, Any]] = []
+    clip_ids = data.get("clip_ids")
+    accepted_clip_ids: set[str] = set()
+    rejected_clip_ids: list[str] = []
+
+    if clip_ids is not None:
+        clip_ids = list(clip_ids)
+        for cid in sorted(set(str(c) for c in clip_ids)):
+            mask = np.array([str(c) == cid for c in clip_ids])
+            pc = float(np.mean(mpjpe_fn(pred_rr[mask][None, ...], gt_rr[mask][None, ...])))
+            pc_mm = mm_from_m(pc)
+            accepted = pc_mm <= max_clip_mpjpe_mm
+            per_clip.append(
+                {
+                    "clip_id": cid,
+                    "mpjpe_m": pc,
+                    "mpjpe_mm": pc_mm,
+                    "accepted": accepted,
+                }
+            )
+            if accepted:
+                accepted_clip_ids.add(cid)
+            else:
+                rejected_clip_ids.append(cid)
+
+    if clip_ids is not None and accepted_clip_ids:
+        frame_mask = frame_mask_for_clips(clip_ids, accepted_clip_ids)
+        pred_use = pred_rr[frame_mask]
+        gt_use = gt_rr[frame_mask]
+    else:
+        pred_use = pred_rr
+        gt_use = gt_rr
+
+    metrics = _aggregate_pose3d(pred_use, gt_use, mpjpe_fn, p_mpjpe_fn)
+    all_metrics = _aggregate_pose3d(pred_rr, gt_rr, mpjpe_fn, p_mpjpe_fn)
+
+    accepted_per_clip_mpjpe = [c["mpjpe_m"] for c in per_clip if c.get("accepted")]
+
+    metrics["macro_mpjpe_m"] = float(np.mean(accepted_per_clip_mpjpe)) if accepted_per_clip_mpjpe else None
+    metrics["macro_mpjpe_mm"] = (
+        mm_from_m(float(np.mean(accepted_per_clip_mpjpe))) if accepted_per_clip_mpjpe else None
+    )
+    metrics["per_clip"] = per_clip
+    metrics["median_mpjpe_mm"] = (
+        mm_from_m(float(np.median(accepted_per_clip_mpjpe))) if accepted_per_clip_mpjpe else None
+    )
+    metrics["iqr_mpjpe_mm"] = (
+        mm_from_m(float(np.percentile(accepted_per_clip_mpjpe, 75) - np.percentile(accepted_per_clip_mpjpe, 25)))
+        if accepted_per_clip_mpjpe
+        else None
+    )
+    metrics["clip_filter"] = {
+        "max_clip_mpjpe_mm": max_clip_mpjpe_mm,
+        "num_clips_total": len(per_clip),
+        "num_clips_accepted": len(accepted_clip_ids),
+        "num_clips_rejected": len(rejected_clip_ids),
+        "num_frames_total": int(pred_rr.shape[0]),
+        "num_frames_accepted": int(pred_use.shape[0]),
+        "rejected_clip_ids": rejected_clip_ids,
+        "accepted_clip_ids": sorted(accepted_clip_ids),
+    }
+    metrics["all_clips"] = {
+        "mpjpe_m": all_metrics["mpjpe_m"],
+        "mpjpe_mm": all_metrics["mpjpe_mm"],
+        "macro_mpjpe_mm": mm_from_m(float(np.mean([c["mpjpe_m"] for c in per_clip]))) if per_clip else None,
+        "median_mpjpe_mm": mm_from_m(float(np.median([c["mpjpe_m"] for c in per_clip]))) if per_clip else None,
+    }
+
+    n = pred_use.shape[0]
     if n > 0:
         pos = np.linspace(0, 1, n)
-        frame_err = np.linalg.norm(pred_rr - gt_rr, axis=-1).mean(axis=-1)
+        frame_err = np.linalg.norm(pred_use - gt_use, axis=-1).mean(axis=-1)
         bins = np.linspace(0, 1, 5, endpoint=False)
         bin_means = []
         for b0, b1 in zip(bins, list(bins[1:]) + [1.0]):
