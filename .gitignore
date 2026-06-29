@@ -88,6 +88,9 @@ training_outputs/*
 checkpoints/*
 posemamba_weights/*
 
+# Thesis evaluation outputs
+results/
+
 # OS
 .DS_Store
 Thumbs.db

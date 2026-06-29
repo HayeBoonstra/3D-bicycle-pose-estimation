@@ -11,6 +11,7 @@ from pathlib import Path
 import yaml
 
 GENERATED_CONFIG_NAME = "PoseMamba_train_bicycle.generated.yaml"
+DATA_ROOT_PLACEHOLDER = "__DATA_ROOT__/PoseMamba_f243s81_detected2d"
 _RUN_DIR_RE = re.compile(r"^run_(\d+)$")
 _EXPERIMENT_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -55,29 +56,39 @@ def resolve_run_checkpoint_dir(
     return allocate_run_checkpoint_dir(checkpoint_base)
 
 
-def _write_config(
-    output_path: Path,
-    data_root: Path,
-    subset_name: str,
-    clip_len: int,
-    offline_stride: int,
-    num_joints: int,
-    batch_size: int,
-    bicycle_2d_noise_sigma: float,
-    epochs: int,
-    max_batches: int,
-    no_eval: bool,
-    max_eval_batches: int,
-    dim_feat: int,
-    depth: int,
-    flip: bool,
-    checkpoint_frequency: int,
-    lambda_steer: float,
-    lambda_steer_velocity: float,
-    lambda_roll: float,
-    lambda_roll_velocity: float,
-) -> None:
-    cfg = {
+def build_bicycle_config(
+    *,
+    data_root: str | Path,
+    subset_name: str = "BICYCLE",
+    clip_len: int = 243,
+    offline_stride: int = 81,
+    num_joints: int = 18,
+    batch_size: int = 4,
+    bicycle_2d_noise_sigma: float = 0.0,
+    epochs: int = 120,
+    max_batches: int = 0,
+    no_eval: bool = False,
+    max_eval_batches: int = 0,
+    dim_feat: int = 64,
+    depth: int = 10,
+    flip: bool = True,
+    checkpoint_frequency: int = 30,
+    lambda_steer: float = 0.0,
+    lambda_steer_velocity: float = 0.0,
+    lambda_roll: float = 0.0,
+    lambda_roll_velocity: float = 0.0,
+    lambda_3d: float = 1.0,
+    lambda_scale: float = 0.5,
+    lambda_3d_velocity: float = 20.0,
+    lambda_diff: float = 0.5,
+    lambda_lv: float = 0.0,
+    lambda_lg: float = 0.0,
+    lambda_a: float = 0.0,
+    lambda_av: float = 0.0,
+    lambda_3dw: float = 0.0,
+) -> dict:
+    """Return a complete PoseMamba bicycle training config dict."""
+    return {
         "train_2d": False,
         "no_eval": no_eval,
         "finetune": False,
@@ -108,15 +119,15 @@ def _write_config(
         "eval_snap_xy_to_input": False,
         "synthetic": False,  # do not use oracle 2D from GT 3D
         "bicycle_2d_noise_sigma": bicycle_2d_noise_sigma,
-        "lambda_3d_velocity": 20.0,
-        "lambda_scale": 0.5,
-        "lambda_lv": 0.0,
-        "lambda_lg": 0.0,
-        "lambda_a": 0.0,
-        "lambda_av": 0.0,
-        "lambda_3dw": 0.0,
-        "lambda_3d": 1.0,
-        "lambda_diff": 0.5,
+        "lambda_3d_velocity": lambda_3d_velocity,
+        "lambda_scale": lambda_scale,
+        "lambda_lv": lambda_lv,
+        "lambda_lg": lambda_lg,
+        "lambda_a": lambda_a,
+        "lambda_av": lambda_av,
+        "lambda_3dw": lambda_3dw,
+        "lambda_3d": lambda_3d,
+        "lambda_diff": lambda_diff,
         "lambda_steer": lambda_steer,
         "lambda_steer_velocity": lambda_steer_velocity,
         "lambda_roll": lambda_roll,
@@ -128,6 +139,51 @@ def _write_config(
         "max_batches": max_batches,
         "max_eval_batches": max_eval_batches,
     }
+
+
+def _write_config(
+    output_path: Path,
+    data_root: Path,
+    subset_name: str,
+    clip_len: int,
+    offline_stride: int,
+    num_joints: int,
+    batch_size: int,
+    bicycle_2d_noise_sigma: float,
+    epochs: int,
+    max_batches: int,
+    no_eval: bool,
+    max_eval_batches: int,
+    dim_feat: int,
+    depth: int,
+    flip: bool,
+    checkpoint_frequency: int,
+    lambda_steer: float,
+    lambda_steer_velocity: float,
+    lambda_roll: float,
+    lambda_roll_velocity: float,
+) -> None:
+    cfg = build_bicycle_config(
+        data_root=data_root,
+        subset_name=subset_name,
+        clip_len=clip_len,
+        offline_stride=offline_stride,
+        num_joints=num_joints,
+        batch_size=batch_size,
+        bicycle_2d_noise_sigma=bicycle_2d_noise_sigma,
+        epochs=epochs,
+        max_batches=max_batches,
+        no_eval=no_eval,
+        max_eval_batches=max_eval_batches,
+        dim_feat=dim_feat,
+        depth=depth,
+        flip=flip,
+        checkpoint_frequency=checkpoint_frequency,
+        lambda_steer=lambda_steer,
+        lambda_steer_velocity=lambda_steer_velocity,
+        lambda_roll=lambda_roll,
+        lambda_roll_velocity=lambda_roll_velocity,
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("w", encoding="utf-8") as f:
         yaml.safe_dump(cfg, f, sort_keys=False)
