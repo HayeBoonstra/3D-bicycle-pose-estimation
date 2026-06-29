@@ -26,9 +26,41 @@ if str(REPO_ROOT) not in sys.path:
 from lift_from_2d_array import load_posemamba_lifter  # noqa: E402
 from posemamba_bicycle_io import Input2DMode, load_sequence_pkl, prepare_2d, to_batch_2d  # noqa: E402
 from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES  # noqa: E402
-from evaluation.common import ensure_dir  # noqa: E402
+from evaluation.common import default_detected2d_test_dir, ensure_dir  # noqa: E402
 
 JOINT_SHORT = [n.replace("k_", "") for n in BICYCLE_KEYPOINT_NAMES]
+
+
+def _off_diagonal_values(mat: np.ndarray) -> np.ndarray:
+    mask = ~np.eye(mat.shape[0], dtype=bool)
+    return mat[mask]
+
+
+def _contrast_limits(mat: np.ndarray, *, lo_pct: float = 5.0, hi_pct: float = 95.0) -> tuple[float, float]:
+    """Percentile limits from off-diagonal entries (exclude self-correlation on diagonal)."""
+    off = _off_diagonal_values(mat)
+    if off.size == 0:
+        return float(np.min(mat)), float(np.max(mat))
+    lo = float(np.percentile(off, lo_pct))
+    hi = float(np.percentile(off, hi_pct))
+    if hi <= lo:
+        hi = lo + 1e-6
+    return lo, hi
+
+
+def _coupling_residual(mat: np.ndarray) -> np.ndarray:
+    """Off-diagonal mean-subtracted coupling; diagonal masked for display."""
+    residual = mat.astype(np.float64).copy()
+    baseline = float(np.mean(_off_diagonal_values(mat)))
+    residual -= baseline
+    np.fill_diagonal(residual, np.nan)
+    return residual
+
+
+def _mask_diagonal_for_display(mat: np.ndarray) -> np.ndarray:
+    out = mat.astype(np.float64).copy()
+    np.fill_diagonal(out, np.nan)
+    return out
 
 
 def _enable_ssm_debug(model: torch.nn.Module) -> None:
@@ -87,32 +119,138 @@ def _collect_coupling(
     return joint_coupling, frame_coupling, block_tags
 
 
-def _plot_joint_heatmap(mat: np.ndarray, title: str, out_path: Path) -> None:
+def _plot_matrix_heatmap(
+    mat: np.ndarray,
+    *,
+    title: str,
+    out_path: Path,
+    cbar_label: str,
+    cmap: str = "viridis",
+    vmin: float | None = None,
+    vmax: float | None = None,
+    center: float | None = None,
+    x_labels: list[str] | None = None,
+    y_labels: list[str] | None = None,
+    figsize: tuple[float, float] = (10, 9),
+    axis_label: str | None = None,
+) -> None:
     n = mat.shape[0]
-    labels = JOINT_SHORT[:n]
-    fig, ax = plt.subplots(figsize=(10, 9))
-    im = ax.imshow(mat, cmap="viridis", vmin=0, vmax=1)
+    labels = x_labels or [str(i) for i in range(n)]
+    ylabels = y_labels or labels
+
+    fig, ax = plt.subplots(figsize=figsize)
+    plot_cmap = plt.get_cmap(cmap).copy()
+    plot_cmap.set_bad(color="#ececec")
+
+    if center is not None:
+        limit = max(abs(float(np.nanmin(mat))), abs(float(np.nanmax(mat))), 1e-6)
+        im = ax.imshow(mat, cmap=plot_cmap, vmin=-limit, vmax=limit)
+    else:
+        im = ax.imshow(mat, cmap=plot_cmap, vmin=vmin, vmax=vmax)
+
     ax.set_xticks(range(n))
     ax.set_yticks(range(n))
-    ax.set_xticklabels(labels, rotation=55, ha="right", fontsize=8)
-    ax.set_yticklabels(labels, fontsize=8)
+    if x_labels is not None:
+        ax.set_xticklabels(labels, rotation=55, ha="right", fontsize=8)
+        ax.set_yticklabels(ylabels, fontsize=8)
+    if axis_label:
+        ax.set_xlabel(axis_label)
+        ax.set_ylabel(axis_label)
     ax.set_title(title)
-    fig.colorbar(im, ax=ax, fraction=0.046, label="|correlation|")
+    fig.colorbar(im, ax=ax, fraction=0.046, label=cbar_label)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
 
 
-def _plot_heatmap(mat: np.ndarray, title: str, out_path: Path, axis_label: str) -> None:
-    fig, ax = plt.subplots(figsize=(8, 7))
-    im = ax.imshow(mat, cmap="viridis", vmin=0, vmax=1)
-    ax.set_title(title)
-    ax.set_xlabel(axis_label)
-    ax.set_ylabel(axis_label)
-    fig.colorbar(im, ax=ax, fraction=0.046)
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=150)
-    plt.close(fig)
+def _plot_joint_coupling_maps(
+    mat: np.ndarray,
+    out_dir: Path,
+    *,
+    lo_pct: float,
+    hi_pct: float,
+) -> None:
+    n = mat.shape[0]
+    labels = JOINT_SHORT[:n]
+    lo, hi = _contrast_limits(mat, lo_pct=lo_pct, hi_pct=hi_pct)
+    baseline = float(np.mean(_off_diagonal_values(mat)))
+
+    _plot_matrix_heatmap(
+        mat,
+        title="SSM joint-joint coupling (absolute scale)",
+        out_path=out_dir / "ssm_joint_joint_absolute.png",
+        cbar_label="|correlation|",
+        cmap="viridis",
+        vmin=0.0,
+        vmax=1.0,
+        x_labels=labels,
+        y_labels=labels,
+    )
+    _plot_matrix_heatmap(
+        _mask_diagonal_for_display(mat),
+        title=f"SSM joint-joint coupling (contrast: {lo_pct:g}–{hi_pct:g} pct off-diagonal)",
+        out_path=out_dir / "ssm_joint_joint.png",
+        cbar_label="|correlation|",
+        cmap="viridis",
+        vmin=lo,
+        vmax=hi,
+        x_labels=labels,
+        y_labels=labels,
+    )
+    _plot_matrix_heatmap(
+        _coupling_residual(mat),
+        title=f"SSM joint-joint coupling residual (Δ from mean off-diagonal = {baseline:.3f})",
+        out_path=out_dir / "ssm_joint_joint_residual.png",
+        cbar_label="Δ |correlation|",
+        cmap="RdBu_r",
+        center=0.0,
+        x_labels=labels,
+        y_labels=labels,
+    )
+
+
+def _plot_frame_coupling_maps(
+    mat: np.ndarray,
+    out_dir: Path,
+    *,
+    lo_pct: float,
+    hi_pct: float,
+) -> None:
+    lo, hi = _contrast_limits(mat, lo_pct=lo_pct, hi_pct=hi_pct)
+    baseline = float(np.mean(_off_diagonal_values(mat)))
+
+    _plot_matrix_heatmap(
+        mat,
+        title="SSM frame-frame coupling (absolute scale)",
+        out_path=out_dir / "ssm_frame_frame_absolute.png",
+        cbar_label="|correlation|",
+        cmap="viridis",
+        vmin=0.0,
+        vmax=1.0,
+        figsize=(8, 7),
+        axis_label="Frame index",
+    )
+    _plot_matrix_heatmap(
+        _mask_diagonal_for_display(mat),
+        title=f"SSM frame-frame coupling (contrast: {lo_pct:g}–{hi_pct:g} pct off-diagonal)",
+        out_path=out_dir / "ssm_frame_frame.png",
+        cbar_label="|correlation|",
+        cmap="viridis",
+        vmin=lo,
+        vmax=hi,
+        figsize=(8, 7),
+        axis_label="Frame index",
+    )
+    _plot_matrix_heatmap(
+        _coupling_residual(mat),
+        title=f"SSM frame-frame coupling residual (Δ from mean off-diagonal = {baseline:.3f})",
+        out_path=out_dir / "ssm_frame_frame_residual.png",
+        cbar_label="Δ |correlation|",
+        cmap="RdBu_r",
+        center=0.0,
+        figsize=(8, 7),
+        axis_label="Frame index",
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -122,9 +260,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--sample-pkl",
         type=Path,
-        default=REPO_ROOT / "data/posemamba_training_sequences/PoseMamba_f243s81_detected2d/BICYCLE/test",
+        default=None,
+        help="A sample pickle or directory of pickles (default: detected-2D BICYCLE test set).",
     )
     p.add_argument("--out", type=Path, default=REPO_ROOT / "results/ssm_maps")
+    p.add_argument(
+        "--contrast-lo-pct",
+        type=float,
+        default=5.0,
+        help="Lower percentile for contrast-enhanced heatmaps (off-diagonal only).",
+    )
+    p.add_argument(
+        "--contrast-hi-pct",
+        type=float,
+        default=95.0,
+        help="Upper percentile for contrast-enhanced heatmaps (off-diagonal only).",
+    )
     return p.parse_args()
 
 
@@ -134,7 +285,7 @@ def main() -> None:
     out_dir = ensure_dir(args.out.resolve())
     checkpoint = args.checkpoint.resolve()
     config = args.config.resolve()
-    sample_path = args.sample_pkl.resolve()
+    sample_path = (args.sample_pkl or default_detected2d_test_dir()).resolve()
 
     exp_name = checkpoint.stem.replace("_best_epoch", "")
     model, cfg, device = load_posemamba_lifter(
@@ -161,12 +312,22 @@ def main() -> None:
         num_joints=int(getattr(cfg, "num_joints", 18)),
     )
 
-    _plot_joint_heatmap(joint_map, "SSM joint-joint coupling (mean over blocks)", out_dir / "ssm_joint_joint.png")
+    _plot_joint_coupling_maps(
+        joint_map,
+        out_dir,
+        lo_pct=args.contrast_lo_pct,
+        hi_pct=args.contrast_hi_pct,
+    )
     # Subsample frame map if too large
     if frame_map.shape[0] > 200:
         idx = np.linspace(0, frame_map.shape[0] - 1, 200, dtype=int)
         frame_map = frame_map[np.ix_(idx, idx)]
-    _plot_heatmap(frame_map, "SSM frame-frame coupling", out_dir / "ssm_frame_frame.png", "Frame index")
+    _plot_frame_coupling_maps(
+        frame_map,
+        out_dir,
+        lo_pct=args.contrast_lo_pct,
+        hi_pct=args.contrast_hi_pct,
+    )
 
     np.savez_compressed(
         out_dir / "ssm_coupling.npz",

@@ -25,6 +25,7 @@ from data_generation_pipeline_tools.bicycle_dynamics_angles import (  # noqa: E4
     bicycle_roll_angle,
     bicycle_steer_angle,
 )
+from data_generation_pipeline_tools.visualize_bicycle_pose3d import bicycle_crank_angle  # noqa: E402
 from evaluation.common import default_detected2d_test_dir, ensure_dir  # noqa: E402
 
 
