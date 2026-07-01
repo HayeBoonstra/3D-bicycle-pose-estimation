@@ -46,32 +46,52 @@ def plot_per_joint_mpjpe(metrics: dict[str, Any], out_path: Path) -> None:
     plt.close(fig)
 
 
-def plot_pck_curve(stage12_metrics: dict[str, Any], out_path: Path) -> None:
-    p2 = stage12_metrics.get("pose2d", {})
-    thr = p2.get("pck_thresholds", [])
-    vals = p2.get("pck_values", [])
-    if not thr:
+def _normalized_hist(values: list[float] | np.ndarray) -> np.ndarray:
+    arr = np.asarray(values, dtype=np.float64)
+    total = float(arr.sum())
+    return arr / total if total > 0 else arr
+
+
+def plot_pck_histogram(metrics: dict[str, Any], out_path: Path, *, title_suffix: str = "") -> None:
+    """Normalized histogram of per-keypoint NME (visible joints only)."""
+    p2 = metrics.get("pose2d", {})
+    counts = p2.get("nme_histogram_counts", [])
+    edges = p2.get("nme_histogram_edges", [])
+    if not counts or not edges or len(edges) < 2:
         return
+    fractions = _normalized_hist(counts)
+    centers = 0.5 * (np.asarray(edges[:-1]) + np.asarray(edges[1:]))
+    width = float(edges[1] - edges[0]) * 0.9
     fig, ax = plt.subplots(figsize=(5, 4))
-    ax.plot(thr, vals, marker="o")
-    ax.set_xlabel("Normalized distance threshold")
-    ax.set_ylabel("PCK")
-    ax.set_title(f"PCK curve (AUC={p2.get('pck_auc', 0):.3f})")
-    ax.grid(True, alpha=0.3)
+    ax.bar(centers, fractions, width=width, color="steelblue")
+    ax.set_xlabel("Normalized distance (NME)")
+    ax.set_ylabel("Fraction of keypoints")
+    ax.set_ylim(0.0, max(0.05, float(fractions.max()) * 1.15))
+    suffix = f" ({title_suffix})" if title_suffix else ""
+    ax.set_title(f"PCK error distribution{suffix}")
+    ax.grid(True, alpha=0.3, axis="y")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
 
 
-def plot_iou_histogram(stage12_metrics: dict[str, Any], out_path: Path) -> None:
-    hist = stage12_metrics.get("detection", {}).get("iou_histogram", [])
-    if not hist:
-        return
+def plot_iou_histogram(metrics: dict[str, Any], out_path: Path, *, title_suffix: str = "") -> None:
+    det = metrics.get("detection", {})
+    fractions = det.get("iou_histogram_fraction")
+    if not fractions:
+        counts = det.get("iou_histogram", [])
+        if not counts:
+            return
+        fractions = _normalized_hist(counts).tolist()
+    centers = np.linspace(0.05, 0.95, len(fractions))
     fig, ax = plt.subplots(figsize=(5, 4))
-    ax.bar(np.linspace(0.05, 0.95, len(hist)), hist, width=0.08, color="teal")
+    ax.bar(centers, fractions, width=0.08, color="teal")
     ax.set_xlabel("IoU bin center")
-    ax.set_ylabel("Count")
-    ax.set_title("Detection IoU distribution")
+    ax.set_ylabel("Fraction of detections")
+    suffix = f" ({title_suffix})" if title_suffix else ""
+    ax.set_title(f"Detection IoU distribution{suffix}")
+    ax.set_ylim(0.0, max(0.05, float(np.max(fractions)) * 1.15))
+    ax.grid(True, alpha=0.3, axis="y")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
@@ -190,7 +210,10 @@ def main() -> None:
     results_dir = args.results_dir
     cross_fig_dir = ensure_dir(results_dir / "figures")
 
-    stage12 = _load_json(results_dir / "stage12_metrics.json")
+    lifterinput = _load_json(results_dir / "stage12_lifterinput_metrics.json")
+    if not lifterinput:
+        lifterinput = _load_json(results_dir / "stage12_metrics.json")
+    static = _load_json(results_dir / "stage12_static_metrics.json")
     frontier = _load_json(results_dir / "capacity_frontier.json")
 
     summary_rows = []
@@ -208,9 +231,12 @@ def main() -> None:
                     except ValueError:
                         pass
 
-    if stage12:
-        plot_pck_curve(stage12, cross_fig_dir / "pck_curve.png")
-        plot_iou_histogram(stage12, cross_fig_dir / "iou_histogram.png")
+    if lifterinput:
+        plot_pck_histogram(lifterinput, cross_fig_dir / "pck_histogram_lifterinput.png", title_suffix="lifter input")
+        plot_iou_histogram(lifterinput, cross_fig_dir / "iou_histogram_lifterinput.png", title_suffix="lifter input")
+    if static:
+        plot_pck_histogram(static, cross_fig_dir / "pck_histogram_static.png", title_suffix="static frames")
+        plot_iou_histogram(static, cross_fig_dir / "iou_histogram_static.png", title_suffix="static frames")
 
     if frontier and summary_rows:
         plot_capacity_frontier(frontier, summary_rows, cross_fig_dir / "capacity_frontier.png")

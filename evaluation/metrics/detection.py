@@ -96,6 +96,11 @@ def compute_detection_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
         "mean_scale_error_area_ratio": float(np.mean(scale_err)) if scale_err else None,
         "mean_aspect_ratio_error": float(np.mean(aspect_err)) if aspect_err else None,
         "iou_histogram": np.histogram(iou_arr, bins=10, range=(0.0, 1.0))[0].tolist() if iou_arr.size else [],
+        "iou_histogram_fraction": (
+            (np.histogram(iou_arr, bins=10, range=(0.0, 1.0))[0] / max(iou_arr.size, 1)).tolist()
+            if iou_arr.size
+            else []
+        ),
         "by_scene_mean_iou": {k: float(np.mean(v)) for k, v in by_scene.items()},
         "by_pattern_mean_iou": {k: float(np.mean(v)) for k, v in by_pattern.items()},
     }

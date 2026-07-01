@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Extract stage-1/2 records (detection + 2D keypoints) from raw clip sidecars."""
+"""Extract stage-1/2 records from 3D-lifter input clips (pre-baked detection sidecars)."""
 
 from __future__ import annotations
 
@@ -168,7 +168,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Raw Blender clip root (default: RAW_ROOT env, repo data/, or /mnt/SmallSSD/...)",
     )
-    p.add_argument("--out", type=Path, default=REPO_ROOT / "results/stage12_records.jsonl")
+    p.add_argument("--out", type=Path, default=REPO_ROOT / "results/stage12_lifterinput_records.jsonl")
     return p.parse_args()
 
 
@@ -206,9 +206,9 @@ def main() -> None:
         for rec in all_records:
             f.write(json.dumps(rec) + "\n")
 
-    print(f"[extract_stage12] raw_root={raw_root}")
-    print(f"[extract_stage12] test_dir={test_dir}")
-    print(f"[extract_stage12] wrote {out_path} ({len(all_records)} frames, {len(clip_ids)} test clips)")
+    print(f"[extract_stage12_lifterinput] raw_root={raw_root}")
+    print(f"[extract_stage12_lifterinput] test_dir={test_dir}")
+    print(f"[extract_stage12_lifterinput] wrote {out_path} ({len(all_records)} frames, {len(clip_ids)} test clips)")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ import csv
 import json
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
@@ -39,7 +39,15 @@ def _flatten(prefix: str, d: dict[str, Any], out: dict[str, Any]) -> None:
         key = f"{prefix}_{k}" if prefix else k
         if isinstance(v, dict):
             _flatten(key, v, out)
-        elif isinstance(v, (list, tuple)) and k not in ("pck_thresholds", "pck_values", "time_series"):
+        elif isinstance(v, (list, tuple)) and k not in (
+            "pck_thresholds",
+            "pck_values",
+            "nme_histogram_counts",
+            "nme_histogram_edges",
+            "iou_histogram",
+            "iou_histogram_fraction",
+            "time_series",
+        ):
             out[key] = json.dumps(v)
         else:
             out[key] = v
@@ -68,10 +76,28 @@ def _write_tex_table(rows: list[dict[str, Any]], columns: list[tuple[str, str]],
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def _first_existing(*paths: Path) -> Optional[Path]:
+    for path in paths:
+        if path.is_file():
+            return path
+    return None
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Compute thesis evaluation metrics.")
     p.add_argument("--results-dir", type=Path, default=REPO_ROOT / "results")
-    p.add_argument("--stage12", type=Path, default=None, help="Path to stage12_records.jsonl")
+    p.add_argument(
+        "--stage12-lifterinput",
+        type=Path,
+        default=None,
+        help="Path to stage12_lifterinput_records.jsonl (3D-lifter input clips)",
+    )
+    p.add_argument(
+        "--stage12-static",
+        type=Path,
+        default=None,
+        help="Path to stage12_static_records.jsonl (bicycle_pose_dataset static frames)",
+    )
     p.add_argument("--experiments", type=Path, default=REPO_ROOT / "experiments/configs/experiments.json")
     p.add_argument(
         "--max-clip-mpjpe-mm",
@@ -85,17 +111,39 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     results_dir = ensure_dir(args.results_dir)
-    stage12_path = args.stage12 or (results_dir / "stage12_records.jsonl")
+    lifterinput_path = args.stage12_lifterinput or _first_existing(
+        results_dir / "stage12_lifterinput_records.jsonl",
+        results_dir / "stage12_records.jsonl",
+    )
+    static_path = args.stage12_static or _first_existing(
+        results_dir / "stage12_static_records.jsonl",
+        results_dir / "bicycle_pose_stage12_records.jsonl",
+    )
 
-    stage12_records = _load_jsonl(stage12_path)
-    stage12_metrics = {}
-    if stage12_records:
-        stage12_metrics = {
-            "detection": compute_detection_metrics(stage12_records),
-            "pose2d": compute_pose2d_metrics(stage12_records),
+    lifterinput_records = _load_jsonl(lifterinput_path) if lifterinput_path else []
+    lifterinput_metrics: dict[str, Any] = {}
+    if lifterinput_records:
+        lifterinput_metrics = {
+            "corpus": "lifter_input",
+            "detection": compute_detection_metrics(lifterinput_records),
+            "pose2d": compute_pose2d_metrics(lifterinput_records),
         }
-        (results_dir / "stage12_metrics.json").write_text(
-            json.dumps(stage12_metrics, indent=2), encoding="utf-8"
+        (results_dir / "stage12_lifterinput_metrics.json").write_text(
+            json.dumps(lifterinput_metrics, indent=2), encoding="utf-8"
+        )
+
+    static_records = _load_jsonl(static_path) if static_path else []
+    static_metrics: dict[str, Any] = {}
+    if static_records:
+        static_metrics = {
+            "corpus": "static_frames",
+            "dataset": "bicycle_pose_dataset",
+            "split": static_records[0].get("split", "unknown"),
+            "detection": compute_detection_metrics(static_records),
+            "pose2d": compute_pose2d_metrics(static_records),
+        }
+        (results_dir / "stage12_static_metrics.json").write_text(
+            json.dumps(static_metrics, indent=2), encoding="utf-8"
         )
 
     experiments_manifest = {}
@@ -156,25 +204,45 @@ def main() -> None:
 
     # LaTeX tables
     tables_dir = ensure_dir(results_dir / "tables")
-    if stage12_metrics.get("detection"):
-        det = stage12_metrics["detection"]
+    if lifterinput_metrics.get("detection"):
+        det = lifterinput_metrics["detection"]
         _write_tex_table(
             [{"metric": "Detection rate", "value": det.get("detection_rate")},
              {"metric": "Mean IoU", "value": det.get("mean_iou")},
              {"metric": "AP@0.5 (proxy)", "value": det.get("ap50_proxy")}],
             [("metric", "Metric"), ("value", "Value")],
-            tables_dir / "detection_headline.tex",
-            "RF-DETR bicycle detection on synthetic test set.",
+            tables_dir / "detection_lifterinput_headline.tex",
+            "RF-DETR bicycle detection on 3D-lifter input test clips.",
         )
-    if stage12_metrics.get("pose2d"):
-        p2 = stage12_metrics["pose2d"]
+    if lifterinput_metrics.get("pose2d"):
+        p2 = lifterinput_metrics["pose2d"]
         _write_tex_table(
             [{"metric": "Mean pixel error", "value": p2.get("mean_pixel_error")},
              {"metric": "PCK@0.1", "value": p2.get("pck_at_0_1")},
              {"metric": "Mean NME", "value": p2.get("mean_nme")}],
             [("metric", "Metric"), ("value", "Value")],
-            tables_dir / "pose2d_headline.tex",
-            "RTMPose-L 2D keypoint accuracy on synthetic test set.",
+            tables_dir / "pose2d_lifterinput_headline.tex",
+            "RTMPose-L 2D keypoint accuracy on 3D-lifter input test clips.",
+        )
+    if static_metrics.get("detection"):
+        det = static_metrics["detection"]
+        _write_tex_table(
+            [{"metric": "Detection rate", "value": det.get("detection_rate")},
+             {"metric": "Mean IoU", "value": det.get("mean_iou")},
+             {"metric": "AP@0.5 (proxy)", "value": det.get("ap50_proxy")}],
+            [("metric", "Metric"), ("value", "Value")],
+            tables_dir / "detection_static_headline.tex",
+            "RF-DETR bicycle detection on static-frame test set (bicycle_pose_dataset).",
+        )
+    if static_metrics.get("pose2d"):
+        p2 = static_metrics["pose2d"]
+        _write_tex_table(
+            [{"metric": "Mean pixel error", "value": p2.get("mean_pixel_error")},
+             {"metric": "PCK@0.1", "value": p2.get("pck_at_0_1")},
+             {"metric": "Mean NME", "value": p2.get("mean_nme")}],
+            [("metric", "Metric"), ("value", "Value")],
+            tables_dir / "pose2d_static_headline.tex",
+            "RTMPose-L 2D keypoint accuracy on static-frame test set (bicycle_pose_dataset).",
         )
     if summary_rows:
         _write_tex_table(

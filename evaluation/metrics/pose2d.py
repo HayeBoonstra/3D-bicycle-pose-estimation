@@ -94,6 +94,13 @@ def compute_pose2d_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     thr_x, pck_vals, pck_auc = _pck_curve(err_norm_arr, vis_arr) if err_norm_arr.size else ([], [], float("nan"))
 
+    nme_hist_counts: list[int] = []
+    nme_hist_edges: list[float] = []
+    if err_norm_arr.size and vis_arr.any():
+        counts, edges = np.histogram(err_norm_arr[vis_arr], bins=10, range=(0.0, 0.5))
+        nme_hist_counts = counts.astype(int).tolist()
+        nme_hist_edges = edges.astype(float).tolist()
+
     return {
         "num_keypoints_evaluated": int(len(all_err_px)),
         "mean_pixel_error": float(np.mean(all_err_px)) if all_err_px else None,
@@ -103,6 +110,8 @@ def compute_pose2d_metrics(records: list[dict[str, Any]]) -> dict[str, Any]:
         "pck_auc": pck_auc,
         "pck_thresholds": thr_x,
         "pck_values": pck_vals,
+        "nme_histogram_counts": nme_hist_counts,
+        "nme_histogram_edges": nme_hist_edges,
         "mean_confidence": float(np.mean(conf_sum / np.maximum(conf_cnt, 1.0))),
         "per_joint_mean_px_error": per_joint,
         "group_mean_px_error": {
