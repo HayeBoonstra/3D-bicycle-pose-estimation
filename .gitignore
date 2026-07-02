@@ -78,6 +78,8 @@ data/*
 1_full_detection_pipeline/output_left_turn/
 
 # Logs and local data
+results/stage12_lifterinput_records.jsonl
+results/stage12_static_records.jsonl
 *.log
 MUJOCO_LOG.TXT
 *.log.*

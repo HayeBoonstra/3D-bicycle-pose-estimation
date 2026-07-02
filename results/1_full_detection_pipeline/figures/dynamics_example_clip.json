@@ -1,0 +1,7 @@
+{
+  "video": "/home/hayepc/3D-bicycle-pose-estimation/results/1_full_detection_pipeline/figures/dynamics_example_clip.mp4",
+  "frames_dir": "/home/hayepc/3D-bicycle-pose-estimation/results/1_full_detection_pipeline/figures/dynamics_example_clip_frames",
+  "clip_id": "clip_evening_street_scene_mujoco_composite_00000_32173250",
+  "num_frames": 243,
+  "mpjpe_mm": 17.82768778502941
+}
