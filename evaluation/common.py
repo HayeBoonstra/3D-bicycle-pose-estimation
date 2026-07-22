@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Literal
+
+Input2DSource = Literal["detected", "gt"]
 
 import numpy as np
 
@@ -49,6 +51,98 @@ def default_sequence_root() -> Path:
 def default_detected2d_test_dir() -> Path:
     return default_sequence_root() / "PoseMamba_f243s81_detected2d/BICYCLE/test"
 
+
+def default_gt2d_test_dir() -> Path:
+    return default_sequence_root() / "PoseMamba_f243s81/BICYCLE/test"
+
+
+def _corpus_subdir_from_config(cfg: dict) -> str | None:
+    data_root = cfg.get("data_root")
+    if data_root:
+        name = Path(str(data_root)).name
+        if name.startswith("PoseMamba_f"):
+            return name
+    clip_len = cfg.get("clip_len")
+    stride = cfg.get("data_stride")
+    if clip_len is not None and stride is not None:
+        tag = "detected2d" if cfg.get("gt_2d") is False else ""
+        base = f"PoseMamba_f{int(clip_len)}s{int(stride)}"
+        return f"{base}_{tag}" if tag else base
+    return None
+
+
+def _gt2d_corpus_subdir_from_config(cfg: dict) -> str | None:
+    """Map a checkpoint config to the oracle (GT-2D) corpus folder name."""
+    subdir = _corpus_subdir_from_config(cfg)
+    if subdir is None:
+        return None
+    if subdir.endswith("_detected2d"):
+        return subdir[: -len("_detected2d")]
+    return subdir
+
+
+def _resolve_test_dir(subdir: str, *, checkpoint_label: str, cfg_path: Path) -> Path:
+    test_dir = default_sequence_root() / subdir / "BICYCLE" / "test"
+    if test_dir.is_dir():
+        return test_dir.resolve()
+    raise FileNotFoundError(
+        f"test pickle dir not found for {checkpoint_label}: {test_dir}\n"
+        f"  (from {cfg_path.name})"
+    )
+
+
+def test_dir_for_input_2d(checkpoint: Path, input_2d: Input2DSource) -> Path:
+    """Resolve BICYCLE/test pickles for detected-2D or oracle GT-2D evaluation."""
+    if input_2d == "detected":
+        return detected2d_test_dir_for_checkpoint(checkpoint)
+
+    ckpt = checkpoint.resolve()
+    for name in ("config.yaml", "train_config.yaml"):
+        cfg_path = ckpt.parent / name
+        if not cfg_path.is_file():
+            continue
+        import yaml
+
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        subdir = _gt2d_corpus_subdir_from_config(cfg)
+        if subdir:
+            return _resolve_test_dir(subdir, checkpoint_label=ckpt.parent.name, cfg_path=cfg_path)
+    return default_gt2d_test_dir()
+
+
+def detected2d_test_dir_for_checkpoint(checkpoint: Path) -> Path:
+    """Resolve BICYCLE/test pickles matching a checkpoint's training corpus."""
+    ckpt = checkpoint.resolve()
+    for name in ("config.yaml", "train_config.yaml"):
+        cfg_path = ckpt.parent / name
+        if not cfg_path.is_file():
+            continue
+        import yaml
+
+        cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        subdir = _corpus_subdir_from_config(cfg)
+        if subdir:
+            return _resolve_test_dir(subdir, checkpoint_label=ckpt.parent.name, cfg_path=cfg_path)
+    return default_detected2d_test_dir()
+
+
+# Capacity ablation experiments (S/B/L/X) for GT-2D oracle eval and comparison tables.
+CAPACITY_EXPERIMENTS = ("capacity_s", "capacity_b", "capacity_l", "capacity_x")
+# Models trained on the GT-projected 2D corpus (PoseMamba_f243s81_gt).
+CAPACITY_GT_TRAINING_EXPERIMENTS = (
+    "capacity_s_gt",
+    "capacity_b_gt",
+    "capacity_l_gt",
+    "capacity_x_gt",
+)
+HEADLINE_EXPERIMENT = "capacity_l"
+
+# Temporal window ablations (training clip length T).
+WINDOW_EXPERIMENTS = ("window_t27", "window_t81", "window_t121", "window_t162")
+# T=243 baseline: same PoseMamba-B setup on f243s81_detected2d (not retrained in run_window_ablations.sh).
+WINDOW_BASELINE_EXPERIMENT = "capacity_b"
+WINDOW_ABLATION_PLOT_EXPERIMENTS = WINDOW_EXPERIMENTS + (WINDOW_BASELINE_EXPERIMENT,)
+
 # Joint groups for per-group error reporting.
 JOINT_GROUPS = {
     "wheels": [8, 9, 10, 11, 12, 13, 14, 15],
@@ -59,6 +153,16 @@ JOINT_GROUPS = {
 # Clips above this per-clip MPJPE are excluded from aggregate 3D/dynamics metrics
 # (likely out-of-distribution scenes absent from training).
 DEFAULT_MAX_CLIP_MPJPE_MM = 70.0
+DEFAULT_SEQUENCE_FPS = 60.0
+
+# Steer-loss ablations that failed to train sensibly; omit from summary tables/plots.
+EXCLUDED_ABLATION_EXPERIMENTS = frozenset(
+    {
+        "dyn_steer",
+        "dyn_steer_roll",
+        "dyn_steer_roll_vel",
+    }
+)
 
 
 def unique_clip_ids_ordered(clip_ids) -> list[str]:
@@ -84,6 +188,30 @@ def first_clip_mask(clip_ids, accepted_clip_ids: set[str] | None = None):
         if accepted is None or cid in accepted:
             return cid, np.array([str(c) == cid for c in clip_ids])
     return None, None
+
+
+def contiguous_segment_slices(frame_idx) -> list[slice]:
+    """Return slices for every run where source frame indices increase by 1."""
+    idx = np.asarray(frame_idx, dtype=np.int64)
+    if idx.size == 0:
+        return []
+    breaks = np.where(np.diff(idx) > 1)[0]
+    run_starts = np.concatenate([[0], breaks + 1])
+    run_ends = np.concatenate([breaks + 1, [len(idx)]])
+    return [slice(int(s), int(e)) for s, e in zip(run_starts, run_ends)]
+
+
+def longest_contiguous_slice(frame_idx) -> slice:
+    """Slice into the longest run where source frame indices increase by 1.
+
+    Test corpora use window-level splits: a single clip_id in preds_3d.npz often
+    concatenates scattered windows (gaps of hundreds of frames). Plotting those
+    arrays with np.arange(n) falsely shows vertical jumps in both pred and GT.
+    """
+    segments = contiguous_segment_slices(frame_idx)
+    if not segments:
+        return slice(0, 0)
+    return max(segments, key=lambda seg: seg.stop - seg.start)
 
 
 def mm_from_m(value_m: float) -> float:

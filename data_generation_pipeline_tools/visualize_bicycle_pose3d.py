@@ -57,7 +57,13 @@ from data_generation_pipeline_tools.bicycle_keypoint_schema import (  # noqa: E4
     BICYCLE_KEYPOINT_NAMES,
     KEYPOINT_INDEX,
     BICYCLE_SKELETON_NAMES,
+    PART_COLORS_GT,
+    PART_COLORS_PRED,
+    skeleton_edges_by_part,
+    validate_skeleton_part_groups,
 )
+
+validate_skeleton_part_groups()
 
 _J = len(BICYCLE_KEYPOINT_NAMES)
 _NPZ_KEYS = ("pred", "prediction", "poses", "poses_3d", "kpts3d_cam", "gt", "data_label")
@@ -150,9 +156,18 @@ def reorient_for_display(motion: np.ndarray, mode: str) -> np.ndarray:
     """Apply a fixed axis remap for matplotlib viewing (does not change stored metrics)."""
     if mode in ("none", ""):
         return motion
+    if mode == "camera_view":
+        # OpenCV root-relative camera coords (X right, Y down, Z forward).
+        # Map to a display frame where the plot looks along the optical axis:
+        #   plot-X = image horizontal, plot-Y = -depth (near=+Y), plot-Z = image up.
+        out = motion.astype(np.float32, copy=True)
+        x, y, z = out[..., 0].copy(), out[..., 1].copy(), out[..., 2].copy()
+        out[..., 0] = x
+        out[..., 1] = -z
+        out[..., 2] = -y
+        return out
     if mode == "camera_up":
-        # Camera: X right, Y down (OpenCV) or Y up depending on export; Z forward.
-        # Matplotlib 3D screen-up is plot-Z. Training pickles use Y-up in practice, so plot-Z = Y.
+        # Legacy remap (plot-Z = camera Y, not image-up). Prefer camera_view for composites.
         out = motion.astype(np.float32, copy=True)
         x, y, z = out[..., 0].copy(), out[..., 1].copy(), out[..., 2].copy()
         out[..., 0] = x
@@ -160,6 +175,22 @@ def reorient_for_display(motion: np.ndarray, mode: str) -> np.ndarray:
         out[..., 2] = y
         return out
     raise ValueError(f"Unknown reorient mode: {mode!r}")
+
+
+def view_angles_for_reorient(mode: str) -> tuple[float, float]:
+    """Default matplotlib elev/azim for a reorient mode."""
+    if mode == "camera_view":
+        # Look along +plot-Y (optical axis); plot-Z is image-up on screen.
+        return 0.0, -90.0
+    return 20.0, -70.0
+
+
+def axis_limits_cube(*poses: np.ndarray, padding_ratio: float = 0.12) -> tuple[np.ndarray, np.ndarray]:
+    """Equal-span axis limits so matplotlib 3D skeletons are not stretched."""
+    lo, hi = axis_limits_for_poses(*poses, padding_ratio=padding_ratio)
+    center = 0.5 * (lo + hi)
+    half = 0.5 * float(np.max(hi - lo))
+    return center - half, center + half
 
 
 def _as_time_joint_xyz(arr: np.ndarray) -> np.ndarray:
@@ -332,10 +363,17 @@ def _finalize_3d_axes(
     elev: float,
     azim: float,
     invert_z: bool,
+    equal_aspect: bool = False,
 ) -> None:
     ax.set_xlim(lo[0], hi[0])
     ax.set_ylim(lo[1], hi[1])
     ax.set_zlim(lo[2], hi[2])
+    if equal_aspect:
+        spans = hi - lo
+        try:
+            ax.set_box_aspect(spans.tolist())  # type: ignore[attr-defined]
+        except AttributeError:
+            pass
     ax.view_init(elev=elev, azim=azim)
     # if invert_z:
     #     ax.invert_zaxis()
@@ -360,6 +398,25 @@ def draw_skeleton(
         ax.scatter(joints[:, 0], joints[:, 1], joints[:, 2], c=pointcolor, s=18, depthshade=True)
 
 
+def draw_skeleton_grouped(
+    ax: plt.Axes,
+    joints: np.ndarray,
+    *,
+    part_colors: dict[str, str],
+    linewidth: float = 2.0,
+    linestyle: str = "-",
+    pointcolor: str | None = None,
+) -> None:
+    """Plot skeleton with semantic part colors (frame/handlebars/wheel grouped)."""
+    for part, edges in skeleton_edges_by_part().items():
+        color = part_colors.get(part, "#00457E")
+        for i, j in edges:
+            seg = np.stack([joints[i], joints[j]], axis=0)
+            ax.plot(seg[:, 0], seg[:, 1], seg[:, 2], color=color, lw=linewidth, ls=linestyle)
+    if pointcolor is not None:
+        ax.scatter(joints[:, 0], joints[:, 1], joints[:, 2], c=pointcolor, s=18, depthshade=True)
+
+
 def render_frame(
     pred: np.ndarray,
     gt: np.ndarray | None,
@@ -370,6 +427,7 @@ def render_frame(
     elev: float,
     azim: float,
     invert_z: bool = True,
+    equal_aspect: bool = False,
     title: str | None = None,
     metrics_text: list[str] | None = None,
 ) -> np.ndarray:
@@ -386,17 +444,22 @@ def render_frame(
             (ax0, "Prediction", pred, "#2F70AF"),
             (ax1, "Ground truth", gt, "#666666"),
         ):
-            draw_skeleton(ax, pose, edgecolor=ec, pointcolor=ec)
+            if pose is pred:
+                draw_skeleton_grouped(ax, pose, part_colors=PART_COLORS_PRED, linewidth=2.4)
+            else:
+                draw_skeleton(ax, pose, edgecolor=ec, pointcolor=ec)
             ax.set_title(panel_title, fontsize=12)
-            _finalize_3d_axes(ax, lo, hi, elev=elev, azim=azim, invert_z=invert_z)
+            _finalize_3d_axes(ax, lo, hi, elev=elev, azim=azim, invert_z=invert_z, equal_aspect=equal_aspect)
     else:
         fig = plt.figure(figsize=(7.2, 6.4), dpi=120)
         ax = fig.add_subplot(1, 1, 1, projection="3d")
         if gt is not None:
-            draw_skeleton(ax, gt, edgecolor="#999999", linewidth=1.8, linestyle="--")
-        draw_skeleton(ax, pred, edgecolor="#00457E", linewidth=2.4)
+            draw_skeleton_grouped(
+                ax, gt, part_colors=PART_COLORS_GT, linewidth=1.8, linestyle="--"
+            )
+        draw_skeleton_grouped(ax, pred, part_colors=PART_COLORS_PRED, linewidth=2.4)
         ax.set_title("Prediction vs ground truth" if gt is not None else "Prediction", fontsize=12)
-        _finalize_3d_axes(ax, lo, hi, elev=elev, azim=azim, invert_z=invert_z)
+        _finalize_3d_axes(ax, lo, hi, elev=elev, azim=azim, invert_z=invert_z, equal_aspect=equal_aspect)
 
     if title:
         fig.suptitle(title, fontsize=11, y=0.98)
@@ -580,9 +643,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--azim", type=float, default=-70.0)
     p.add_argument(
         "--reorient",
-        choices=("none", "camera_up"),
+        choices=("none", "camera_up", "camera_view"),
         default="camera_up",
-        help="Display-only axis remap so the bicycle appears upright (metrics use raw arrays).",
+        help="Display-only axis remap. camera_view aligns the 3D panel with the recording camera.",
     )
     p.add_argument("--title", type=str, default=None, help="Optional figure title (e.g. MPJPE summary).")
     p.add_argument(

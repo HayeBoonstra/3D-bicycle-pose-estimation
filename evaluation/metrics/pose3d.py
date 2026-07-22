@@ -8,6 +8,7 @@ import numpy as np
 
 from evaluation.common import (
     DEFAULT_MAX_CLIP_MPJPE_MM,
+    DEFAULT_SEQUENCE_FPS,
     JOINT_GROUPS,
     frame_mask_for_clips,
     group_mean,
@@ -35,21 +36,21 @@ def mpjpe_per_joint(pred: np.ndarray, gt: np.ndarray) -> np.ndarray:
     return np.linalg.norm(pred - gt, axis=-1).mean(axis=0)
 
 
-def mpjve(pred: np.ndarray, gt: np.ndarray) -> float:
-    """Mean per-joint velocity error (m/frame)."""
+def mpjve(pred: np.ndarray, gt: np.ndarray, *, fps: float = DEFAULT_SEQUENCE_FPS) -> float:
+    """Mean per-joint velocity error (m/s)."""
     if pred.shape[0] <= 1:
         return 0.0
-    v_pred = pred[1:] - pred[:-1]
-    v_gt = gt[1:] - gt[:-1]
+    v_pred = (pred[1:] - pred[:-1]) * fps
+    v_gt = (gt[1:] - gt[:-1]) * fps
     return float(np.linalg.norm(v_pred - v_gt, axis=-1).mean())
 
 
-def mpjae(pred: np.ndarray, gt: np.ndarray) -> float:
-    """Mean per-joint acceleration error (m/frame^2)."""
+def mpjae(pred: np.ndarray, gt: np.ndarray, *, fps: float = DEFAULT_SEQUENCE_FPS) -> float:
+    """Mean per-joint acceleration error (m/s^2)."""
     if pred.shape[0] <= 2:
         return 0.0
-    a_pred = pred[2:] - 2 * pred[1:-1] + pred[:-2]
-    a_gt = gt[2:] - 2 * gt[1:-1] + gt[:-2]
+    a_pred = (pred[2:] - 2 * pred[1:-1] + pred[:-2]) * (fps * fps)
+    a_gt = (gt[2:] - 2 * gt[1:-1] + gt[:-2]) * (fps * fps)
     return float(np.linalg.norm(a_pred - a_gt, axis=-1).mean())
 
 
@@ -76,6 +77,8 @@ def _aggregate_pose3d(
     pmpjpe_m = float(np.mean(p_mpjpe_fn(pred_rr, gt_rr)))
     nmpjpe_m = n_mpjpe_numpy(pred_rr, gt_rr)
     per_joint = mpjpe_per_joint(pred_rr, gt_rr)
+    mpjve_m = mpjve(pred_rr, gt_rr)
+    mpjae_m = mpjae(pred_rr, gt_rr)
     return {
         "mpjpe_m": mpjpe_m,
         "mpjpe_mm": mm_from_m(mpjpe_m),
@@ -83,8 +86,10 @@ def _aggregate_pose3d(
         "p_mpjpe_mm": mm_from_m(pmpjpe_m),
         "n_mpjpe_m": nmpjpe_m,
         "n_mpjpe_mm": mm_from_m(nmpjpe_m),
-        "mpjve_m_per_frame": mpjve(pred_rr, gt_rr),
-        "mpjae_m_per_frame2": mpjae(pred_rr, gt_rr),
+        "mpjve_m_per_s": mpjve_m,
+        "mpjve_mm_per_s": mm_from_m(mpjve_m),
+        "mpjae_m_per_s2": mpjae_m,
+        "mpjae_mm_per_s2": mm_from_m(mpjae_m),
         "passes_40mm_target": mpjpe_m < 0.04,
         "per_joint_mpjpe_m": {str(j): float(per_joint[j]) for j in range(len(per_joint))},
         "per_joint_mpjpe_mm": {str(j): mm_from_m(float(per_joint[j])) for j in range(len(per_joint))},

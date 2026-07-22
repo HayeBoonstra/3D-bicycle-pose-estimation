@@ -15,6 +15,7 @@ def _set_inference_env() -> None:
     os.environ.setdefault("CORE_MODEL_SAM_ENABLED", "False")
     os.environ.setdefault("CORE_MODEL_SAM3_ENABLED", "False")
     os.environ.setdefault("CORE_MODEL_GAZE_ENABLED", "False")
+    os.environ.setdefault("CORE_MODEL_YOLO_WORLD_ENABLED", "False")
 
 
 def _iter_image_paths(image_dir: Path) -> Iterable[Path]:

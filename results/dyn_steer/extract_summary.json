@@ -1,0 +1,314 @@
+{
+  "experiment": "dyn_steer",
+  "checkpoint": "/home/hayepc/3D-bicycle-pose-estimation/posemamba_weights/dyn_steer/best_epoch.bin",
+  "input_2d": "detected",
+  "input_2d_source": "rtmpose_detection_bbox",
+  "test_dir": "/mnt/SmallSSD/3D-bicycle-pose-estimation/posemamba_training_sequences/PoseMamba_f243s81_detected2d/BICYCLE/test",
+  "inference_mode": "window",
+  "train_pe_len": 243,
+  "num_clips": 43,
+  "num_frames": 24867,
+  "clips": [
+    {
+      "clip_id": "clip_docks_scene_mujoco_composite_00011_67274730",
+      "num_frames": 405,
+      "num_windows": 2,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.5266132950782776
+    },
+    {
+      "clip_id": "clip_docks_scene_mujoco_composite_00033_1357457789",
+      "num_frames": 1215,
+      "num_windows": 5,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.4437541961669922
+    },
+    {
+      "clip_id": "clip_docks_scene_mujoco_composite_00035_1643710457",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.2842906713485718
+    },
+    {
+      "clip_id": "clip_docks_scene_mujoco_composite_00037_1401913856",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.24904169142246246
+    },
+    {
+      "clip_id": "clip_docks_scene_mujoco_composite_00040_265044914",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.46068841218948364
+    },
+    {
+      "clip_id": "clip_docks_scene_mujoco_composite_00049_47734321",
+      "num_frames": 891,
+      "num_windows": 4,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.4071160852909088
+    },
+    {
+      "clip_id": "clip_docks_scene_mujoco_composite_00053_1085256450",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.26637187600135803
+    },
+    {
+      "clip_id": "clip_docks_scene_mujoco_composite_00057_1671829897",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.23012907803058624
+    },
+    {
+      "clip_id": "clip_evening_street_scene_mujoco_composite_00000_32173250",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.20487584173679352
+    },
+    {
+      "clip_id": "clip_evening_street_scene_mujoco_composite_00004_415221124",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.2565198540687561
+    },
+    {
+      "clip_id": "clip_evening_street_scene_mujoco_composite_00008_783747794",
+      "num_frames": 729,
+      "num_windows": 3,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.2662084400653839
+    },
+    {
+      "clip_id": "clip_evening_street_scene_mujoco_composite_00014_362460226",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.27862969040870667
+    },
+    {
+      "clip_id": "clip_evening_street_scene_mujoco_composite_00042_795995313",
+      "num_frames": 972,
+      "num_windows": 4,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.3877881169319153
+    },
+    {
+      "clip_id": "clip_evening_street_scene_mujoco_composite_00050_1314988786",
+      "num_frames": 324,
+      "num_windows": 2,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.18637041747570038
+    },
+    {
+      "clip_id": "clip_evening_street_scene_mujoco_composite_00054_348822665",
+      "num_frames": 810,
+      "num_windows": 4,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.4048917293548584
+    },
+    {
+      "clip_id": "clip_evening_street_scene_mujoco_composite_00058_1192342923",
+      "num_frames": 648,
+      "num_windows": 3,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.2878069281578064
+    },
+    {
+      "clip_id": "clip_german_outskirts_scene_mujoco_composite_00010_797178573",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.3353688418865204
+    },
+    {
+      "clip_id": "clip_german_outskirts_scene_mujoco_composite_00032_1943623796",
+      "num_frames": 729,
+      "num_windows": 3,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.3103317320346832
+    },
+    {
+      "clip_id": "clip_german_outskirts_scene_mujoco_composite_00034_1384263796",
+      "num_frames": 729,
+      "num_windows": 4,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.34510329365730286
+    },
+    {
+      "clip_id": "clip_german_outskirts_scene_mujoco_composite_00039_837956431",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.21063143014907837
+    },
+    {
+      "clip_id": "clip_german_outskirts_scene_mujoco_composite_00041_907858058",
+      "num_frames": 729,
+      "num_windows": 3,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.300814151763916
+    },
+    {
+      "clip_id": "clip_german_outskirts_scene_mujoco_composite_00047_396692116",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.37324678897857666
+    },
+    {
+      "clip_id": "clip_quattro_canti_scene_mujoco_composite_00001_1878329174",
+      "num_frames": 972,
+      "num_windows": 4,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.30757391452789307
+    },
+    {
+      "clip_id": "clip_quattro_canti_scene_mujoco_composite_00007_812599857",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.2969838082790375
+    },
+    {
+      "clip_id": "clip_quattro_canti_scene_mujoco_composite_00009_1238244393",
+      "num_frames": 891,
+      "num_windows": 4,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.2271990180015564
+    },
+    {
+      "clip_id": "clip_quattro_canti_scene_mujoco_composite_00012_264611554",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.16380655765533447
+    },
+    {
+      "clip_id": "clip_quattro_canti_scene_mujoco_composite_00043_507811196",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.24165736138820648
+    },
+    {
+      "clip_id": "clip_quattro_canti_scene_mujoco_composite_00046_392168404",
+      "num_frames": 648,
+      "num_windows": 3,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.34617382287979126
+    },
+    {
+      "clip_id": "clip_quattro_canti_scene_mujoco_composite_00051_298106147",
+      "num_frames": 648,
+      "num_windows": 3,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.3722388446331024
+    },
+    {
+      "clip_id": "clip_tree_lined_scene_mujoco_composite_00002_1907513288",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.14665251970291138
+    },
+    {
+      "clip_id": "clip_tree_lined_scene_mujoco_composite_00003_958645674",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.20802687108516693
+    },
+    {
+      "clip_id": "clip_tree_lined_scene_mujoco_composite_00005_1407969862",
+      "num_frames": 729,
+      "num_windows": 3,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.34204402565956116
+    },
+    {
+      "clip_id": "clip_tree_lined_scene_mujoco_composite_00006_996299522",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.16792164742946625
+    },
+    {
+      "clip_id": "clip_tree_lined_scene_mujoco_composite_00013_336192274",
+      "num_frames": 729,
+      "num_windows": 3,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.29156485199928284
+    },
+    {
+      "clip_id": "clip_tree_lined_scene_mujoco_composite_00048_1922836612",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.39690715074539185
+    },
+    {
+      "clip_id": "clip_tree_lined_scene_mujoco_composite_00055_22927080",
+      "num_frames": 567,
+      "num_windows": 3,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.25828230381011963
+    },
+    {
+      "clip_id": "clip_urban_street_scene_mujoco_composite_00030_2051591328",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.5007961988449097
+    },
+    {
+      "clip_id": "clip_urban_street_scene_mujoco_composite_00031_897035246",
+      "num_frames": 1215,
+      "num_windows": 6,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.471454918384552
+    },
+    {
+      "clip_id": "clip_urban_street_scene_mujoco_composite_00036_1041245804",
+      "num_frames": 243,
+      "num_windows": 1,
+      "num_contiguous_segments": 1,
+      "mpjpe_m": 0.4869179427623749
+    },
+    {
+      "clip_id": "clip_urban_street_scene_mujoco_composite_00038_1132331004",
+      "num_frames": 972,
+      "num_windows": 4,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.36603686213493347
+    },
+    {
+      "clip_id": "clip_urban_street_scene_mujoco_composite_00044_397729200",
+      "num_frames": 729,
+      "num_windows": 3,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.504399299621582
+    },
+    {
+      "clip_id": "clip_urban_street_scene_mujoco_composite_00045_1288910799",
+      "num_frames": 486,
+      "num_windows": 2,
+      "num_contiguous_segments": 2,
+      "mpjpe_m": 0.4247983694076538
+    },
+    {
+      "clip_id": "clip_urban_street_scene_mujoco_composite_00056_1262190186",
+      "num_frames": 1053,
+      "num_windows": 6,
+      "num_contiguous_segments": 3,
+      "mpjpe_m": 0.5493104457855225
+    }
+  ]
+}

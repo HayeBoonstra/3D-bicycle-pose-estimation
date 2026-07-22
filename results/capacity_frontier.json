@@ -5,8 +5,8 @@
     "paper_layers_N": 20,
     "params_M": 1.470275,
     "flops_G": 5.61792512,
-    "throughput_seq_per_s": 34.09308291234661,
-    "latency_ms_per_seq": 29.33146300001681,
+    "throughput_seq_per_s": 34.40589040404051,
+    "latency_ms_per_seq": 29.064790600000382,
     "peak_gpu_mem_MB": 53.17578125,
     "device": "cuda",
     "note": null
@@ -17,8 +17,8 @@
     "paper_layers_N": 20,
     "params_M": 4.742787,
     "flops_G": 19.11941184,
-    "throughput_seq_per_s": 17.888918335860836,
-    "latency_ms_per_seq": 55.90052909992664,
+    "throughput_seq_per_s": 18.12338979005976,
+    "latency_ms_per_seq": 55.17731569998432,
     "peak_gpu_mem_MB": 113.24267578125,
     "device": "cuda",
     "note": null
@@ -29,8 +29,8 @@
     "paper_layers_N": 40,
     "params_M": 9.450627,
     "flops_G": 38.23322496,
-    "throughput_seq_per_s": 8.546137768611194,
-    "latency_ms_per_seq": 117.01192130003619,
+    "throughput_seq_per_s": 8.969320364351287,
+    "latency_ms_per_seq": 111.49116760000197,
     "peak_gpu_mem_MB": 144.09228515625,
     "device": "cuda",
     "note": null
@@ -41,8 +41,8 @@
     "paper_layers_N": 40,
     "params_M": 33.319171,
     "flops_G": 116.373874176,
-    "throughput_seq_per_s": 4.339808018047124,
-    "latency_ms_per_seq": 230.42493949997154,
+    "throughput_seq_per_s": 4.390956102452913,
+    "latency_ms_per_seq": 227.74083290000817,
     "peak_gpu_mem_MB": 345.95556640625,
     "device": "cuda",
     "note": null

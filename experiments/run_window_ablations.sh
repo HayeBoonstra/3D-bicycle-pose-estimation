@@ -13,7 +13,7 @@
 set -euo pipefail
 
 REPO_ROOT="${REPO_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-DATA_ROOT="${DATA_ROOT:-${REPO_ROOT}/data/posemamba_training_sequences}"
+DATA_ROOT="${DATA_ROOT:-/home/hgboonstra/Ablation_study/posemamba_training_sequences}"
 CONDA_ENV="${CONDA_ENV:-posemamba}"
 CHECKPOINT_BASE="${CHECKPOINT_BASE:-${REPO_ROOT}/posemamba_weights}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"

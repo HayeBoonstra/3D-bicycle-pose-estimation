@@ -128,6 +128,7 @@ CLEANUP_RENDER_FRAMES_MODE="${CLEANUP_RENDER_FRAMES_MODE:-per_clip}"
 SKIP_RENDER="${SKIP_RENDER:-0}"
 SKIP_DETECTION="${SKIP_DETECTION:-0}"
 SKIP_DETECTED_2D="${SKIP_DETECTED_2D:-0}"
+SKIP_BUILD_SEQUENCES="${SKIP_BUILD_SEQUENCES:-0}"
 MMPOSE_CONFIG="${MMPOSE_CONFIG:-${REPO_ROOT}/2d_keypoint_detector_training/rtmpose_bicycle_full.py}"
 MMPOSE_CHECKPOINT="${MMPOSE_CHECKPOINT:-${REPO_ROOT}/training_outputs/mmpose_bicycle_rtmpose_l_gpu/best_coco_AP_epoch_175.pth}"
 RFDETR_MODEL="${RFDETR_MODEL:-rfdetr-2xlarge}"
@@ -332,19 +333,23 @@ fi
 _run_py mmpose "${REPO_ROOT}/3d_keypoint_detector_training/qa_detected_2d.py" \
   --raw-root "${RAW_ROOT}"
 
-_run_py mmpose "${REPO_ROOT}/3d_keypoint_detector_training/build_sequences.py" \
-  --raw-root "${RAW_ROOT}" \
-  --output-root "${SEQUENCE_ROOT}" \
-  --window-size "${WINDOW_SIZE}" \
-  --stride "${STRIDE}" \
-  --eval-stride "${WINDOW_SIZE}" \
-  --val-ratio "${VAL_RATIO}" \
-  --test-ratio "${TEST_RATIO}" \
-  --split-mode "${SEQUENCE_SPLIT_MODE}" \
-  --seed "${SEED}" \
-  --input-2d detected \
-  --bbox-source detection \
-  --dataset-tag detected2d
+if [[ "${SKIP_BUILD_SEQUENCES}" != "1" ]]; then
+  _run_py mmpose "${REPO_ROOT}/3d_keypoint_detector_training/build_sequences.py" \
+    --raw-root "${RAW_ROOT}" \
+    --output-root "${SEQUENCE_ROOT}" \
+    --window-size "${WINDOW_SIZE}" \
+    --stride "${STRIDE}" \
+    --eval-stride "${WINDOW_SIZE}" \
+    --val-ratio "${VAL_RATIO}" \
+    --test-ratio "${TEST_RATIO}" \
+    --split-mode "${SEQUENCE_SPLIT_MODE}" \
+    --seed "${SEED}" \
+    --input-2d detected \
+    --bbox-source detection \
+    --dataset-tag detected2d
+else
+  echo "[blender-posemamba] SKIP_BUILD_SEQUENCES=1 — skipping PoseMamba pickle build"
+fi
 
 if [[ "${CLEANUP_RENDER_FRAMES_MODE}" == "end" ]]; then
   deleted_frames_dirs=0

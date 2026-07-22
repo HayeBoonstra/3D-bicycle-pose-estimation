@@ -1,3 +1,0 @@
-{"image_id": "1", "image_path": "/home/hayepc/3D-bicycle-pose-estimation/data/bicycle_pose_dataset/images/test/clip_docks_scene_03137292/frame_0000.png", "bbox_xyxy": [807.0, 512.0, 1299.0, 808.0], "score": 0.9231110215187073}
-{"image_id": "2", "image_path": "/home/hayepc/3D-bicycle-pose-estimation/data/bicycle_pose_dataset/images/test/clip_docks_scene_04865261/frame_0000.png", "bbox_xyxy": [883.0, 520.0, 1123.0, 682.0], "score": 0.9367895722389221}
-{"image_id": "3", "image_path": "/home/hayepc/3D-bicycle-pose-estimation/data/bicycle_pose_dataset/images/test/clip_docks_scene_1003487118/frame_0000.png", "bbox_xyxy": [421.0, 479.0, 1194.0, 963.0], "score": 0.9419499635696411}

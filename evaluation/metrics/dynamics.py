@@ -8,7 +8,14 @@ from typing import Any
 
 import numpy as np
 
-from evaluation.common import DEFAULT_MAX_CLIP_MPJPE_MM, first_clip_mask, frame_mask_for_clips, pearson_r, r_squared
+from evaluation.common import (
+    DEFAULT_MAX_CLIP_MPJPE_MM,
+    first_clip_mask,
+    frame_mask_for_clips,
+    longest_contiguous_slice,
+    pearson_r,
+    r_squared,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -60,6 +67,108 @@ def _velocity_mae(pred_rad: np.ndarray, gt_rad: np.ndarray) -> float:
     return float(np.mean(np.abs(np.rad2deg(vp - vg))))
 
 
+def _build_time_series_payload(
+    *,
+    clip_id: str,
+    pred_viz: np.ndarray,
+    gt_viz: np.ndarray,
+    mujoco_steer_viz: np.ndarray | None,
+    gt_roll_mujoco_viz: np.ndarray | None,
+    frame_idx_viz: np.ndarray | None,
+    segment_id_viz: np.ndarray | None = None,
+) -> dict[str, Any]:
+    pred_steer_viz = np.rad2deg(bicycle_steer_angle(pred_viz))
+    pred_roll_viz = np.rad2deg(bicycle_roll_angle(pred_viz))
+    pred_crank_viz = np.rad2deg(bicycle_crank_angle(pred_viz))
+    gt_roll_kpt_viz = np.rad2deg(bicycle_roll_angle(gt_viz))
+    gt_crank_kpt_viz = np.rad2deg(bicycle_crank_angle(gt_viz))
+    if mujoco_steer_viz is not None:
+        viz_steer_sign = _steer_sign_to_reference(pred_steer_viz, mujoco_steer_viz)
+        gt_steer_mujoco_viz = viz_steer_sign * mujoco_steer_viz
+    else:
+        gt_steer_mujoco_viz = np.rad2deg(bicycle_steer_angle(gt_viz))
+
+    payload: dict[str, Any] = {
+        "clip_id": clip_id,
+        "pred_steer_deg": pred_steer_viz.tolist(),
+        "gt_steer_deg": gt_steer_mujoco_viz.tolist(),
+        "pred_roll_deg": pred_roll_viz.tolist(),
+        "gt_roll_deg": gt_roll_kpt_viz.tolist(),
+        "pred_crank_deg": pred_crank_viz.tolist(),
+        "gt_crank_deg": gt_crank_kpt_viz.tolist(),
+        "gt_roll_mujoco_deg": (
+            gt_roll_mujoco_viz.tolist() if gt_roll_mujoco_viz is not None else None
+        ),
+    }
+    if frame_idx_viz is not None:
+        payload["frame_idx"] = np.asarray(frame_idx_viz, dtype=np.int32).tolist()
+    if segment_id_viz is not None:
+        payload["segment_id"] = np.asarray(segment_id_viz, dtype=np.int32).tolist()
+    return payload
+
+
+def build_time_series_for_clip(
+    preds_npz_path: str | Path,
+    clip_id: str,
+    *,
+    contiguous_only: bool = True,
+) -> dict[str, Any]:
+    """Build steer/roll time series for a single clip (for thesis figures)."""
+    data = np.load(preds_npz_path, allow_pickle=True)
+    clip_ids = data.get("clip_ids")
+    if clip_ids is None:
+        raise ValueError(f"{preds_npz_path} has no clip_ids")
+    mask = np.array([str(c) == clip_id for c in clip_ids])
+    if not np.any(mask):
+        raise ValueError(f"clip_id not found in {preds_npz_path}: {clip_id}")
+
+    pred_viz = np.asarray(data["pred"], dtype=np.float32)[mask]
+    gt_viz = np.asarray(data["gt"], dtype=np.float32)[mask]
+    frame_idx_viz = (
+        np.asarray(data["frame_idx"], dtype=np.int32)[mask]
+        if data.get("frame_idx") is not None
+        else None
+    )
+    mujoco_steer_viz = (
+        np.asarray(data["steer_deg"], dtype=np.float32)[mask]
+        if data.get("steer_deg") is not None
+        else None
+    )
+    gt_roll_mujoco_viz = (
+        np.asarray(data["roll_deg"], dtype=np.float32)[mask]
+        if data.get("roll_deg") is not None
+        else None
+    )
+
+    segment_id_viz = (
+        np.asarray(data["segment_id"], dtype=np.int32)[mask]
+        if data.get("segment_id") is not None
+        else None
+    )
+
+    if contiguous_only and frame_idx_viz is not None:
+        seg = longest_contiguous_slice(frame_idx_viz)
+        pred_viz = pred_viz[seg]
+        gt_viz = gt_viz[seg]
+        frame_idx_viz = frame_idx_viz[seg]
+        if mujoco_steer_viz is not None:
+            mujoco_steer_viz = mujoco_steer_viz[seg]
+        if gt_roll_mujoco_viz is not None:
+            gt_roll_mujoco_viz = gt_roll_mujoco_viz[seg]
+        if segment_id_viz is not None:
+            segment_id_viz = segment_id_viz[seg]
+
+    return _build_time_series_payload(
+        clip_id=clip_id,
+        pred_viz=pred_viz,
+        gt_viz=gt_viz,
+        mujoco_steer_viz=mujoco_steer_viz,
+        gt_roll_mujoco_viz=gt_roll_mujoco_viz,
+        frame_idx_viz=frame_idx_viz,
+        segment_id_viz=segment_id_viz,
+    )
+
+
 def compute_dynamics_metrics(
     preds_npz_path: str | Path,
     *,
@@ -109,13 +218,16 @@ def compute_dynamics_metrics(
     steer_keypoint = _circular_rmse_mae(pred_steer, gt_steer_kpt)
     steer_hub_keypoint = _circular_rmse_mae(pred_steer_hub, gt_steer_hub)
     roll_keypoint = _rmse_mae(pred_roll, gt_roll_kpt)
-    crank_keypoint = _rmse_mae(pred_crank, gt_crank_kpt)
+    crank_keypoint = _circular_rmse_mae(pred_crank, gt_crank_kpt)
+    crank_keypoint["pearson_r"] = pearson_r(pred_crank, gt_crank_kpt)
+    crank_keypoint["r2"] = r_squared(pred_crank, gt_crank_kpt)
 
+    # Primary headline metrics: kinematic angles from predicted vs GT keypoints.
+    steer_stats = steer_keypoint
+    roll_stats = roll_keypoint
     mujoco_steer = data_steer
     mujoco_roll = data_roll
     mujoco_metrics: dict[str, Any] = {}
-    steer_stats = steer_keypoint
-    roll_stats = roll_keypoint
     steer_sign = 1
     steer_hub_diagnostic: dict[str, Any] = {
         "keypoint_self_consistent": steer_hub_keypoint,
@@ -129,8 +241,9 @@ def compute_dynamics_metrics(
         ms_aligned = steer_sign * ms[:n]
         hub_sign = _steer_sign_to_reference(pred_steer_hub[:n], ms[:n])
         ms_hub_aligned = hub_sign * ms[:n]
-        steer_stats = _circular_rmse_mae(pred_steer[:n], ms_aligned)
-        roll_stats = _rmse_mae(pred_roll[:n], mr[:n])
+        steer_vs_mujoco = _circular_rmse_mae(pred_steer[:n], ms_aligned)
+        roll_vs_mujoco = _rmse_mae(pred_roll[:n], mr[:n])
+        roll_gt_kpt_vs_mujoco = _rmse_mae(gt_roll_kpt[:n], mr[:n])
         steer_hub_diagnostic.update(
             {
                 "steer_sign_to_mujoco": hub_sign,
@@ -141,8 +254,9 @@ def compute_dynamics_metrics(
         )
         mujoco_metrics = {
             "steer_sign_to_mujoco": steer_sign,
-            "steer_vs_mujoco": steer_stats,
-            "roll_vs_mujoco": roll_stats,
+            "steer_vs_mujoco": steer_vs_mujoco,
+            "roll_vs_mujoco": roll_vs_mujoco,
+            "roll_gt_kpt_vs_mujoco": roll_gt_kpt_vs_mujoco,
             "steer_pearson_r": pearson_r(pred_steer[:n], ms_aligned),
             "steer_r2": r_squared(pred_steer[:n], ms_aligned),
             "roll_pearson_r": pearson_r(pred_roll[:n], mr[:n]),
@@ -155,20 +269,57 @@ def compute_dynamics_metrics(
     if viz_mask is not None:
         pred_viz = pred_full[viz_mask]
         gt_viz = gt_full[viz_mask]
-        pred_steer_viz = np.rad2deg(bicycle_steer_angle(pred_viz))
-        pred_roll_viz = np.rad2deg(bicycle_roll_angle(pred_viz))
-        gt_roll_kpt_viz = np.rad2deg(bicycle_roll_angle(gt_viz))
-        if data.get("steer_deg") is not None:
-            mujoco_steer_viz = np.asarray(data["steer_deg"], dtype=np.float32)[viz_mask]
-            viz_steer_sign = _steer_sign_to_reference(pred_steer_viz, mujoco_steer_viz)
-            gt_steer_mujoco_viz = viz_steer_sign * mujoco_steer_viz
-        else:
-            gt_steer_mujoco_viz = np.rad2deg(bicycle_steer_angle(gt_viz))
+        frame_idx_viz = (
+            np.asarray(data["frame_idx"], dtype=np.int32)[viz_mask]
+            if data.get("frame_idx") is not None
+            else None
+        )
+        mujoco_steer_viz = (
+            np.asarray(data["steer_deg"], dtype=np.float32)[viz_mask]
+            if data.get("steer_deg") is not None
+            else None
+        )
+        gt_roll_mujoco_viz = (
+            np.asarray(data["roll_deg"], dtype=np.float32)[viz_mask]
+            if data.get("roll_deg") is not None
+            else None
+        )
+        segment_id_viz = (
+            np.asarray(data["segment_id"], dtype=np.int32)[viz_mask]
+            if data.get("segment_id") is not None
+            else None
+        )
+        if frame_idx_viz is not None:
+            seg = longest_contiguous_slice(frame_idx_viz)
+            pred_viz = pred_viz[seg]
+            gt_viz = gt_viz[seg]
+            frame_idx_viz = frame_idx_viz[seg]
+            if mujoco_steer_viz is not None:
+                mujoco_steer_viz = mujoco_steer_viz[seg]
+            if gt_roll_mujoco_viz is not None:
+                gt_roll_mujoco_viz = gt_roll_mujoco_viz[seg]
+            if segment_id_viz is not None:
+                segment_id_viz = segment_id_viz[seg]
+        time_series = _build_time_series_payload(
+            clip_id=str(viz_clip_id),
+            pred_viz=pred_viz,
+            gt_viz=gt_viz,
+            mujoco_steer_viz=mujoco_steer_viz,
+            gt_roll_mujoco_viz=gt_roll_mujoco_viz,
+            frame_idx_viz=frame_idx_viz,
+            segment_id_viz=segment_id_viz,
+        )
     else:
-        pred_steer_viz = pred_steer
-        pred_roll_viz = pred_roll
-        gt_roll_kpt_viz = gt_roll_kpt
-        gt_steer_mujoco_viz = steer_sign * mujoco_steer if mujoco_steer is not None else gt_steer_kpt
+        time_series = _build_time_series_payload(
+            clip_id="all",
+            pred_viz=pred,
+            gt_viz=gt,
+            mujoco_steer_viz=mujoco_steer if mujoco_steer is not None else None,
+            gt_roll_mujoco_viz=(
+                np.asarray(data["roll_deg"], dtype=np.float32) if data.get("roll_deg") is not None else None
+            ),
+            frame_idx_viz=None,
+        )
 
     # Error vs magnitude bins
     def _error_vs_magnitude(pred_deg: np.ndarray, gt_deg: np.ndarray) -> list[dict[str, float]]:
@@ -190,9 +341,11 @@ def compute_dynamics_metrics(
     per_joint_mpjpe = np.linalg.norm(pred - gt, axis=-1).mean(axis=0)
     frame_steer_err = np.rad2deg(np.abs(_wrap_pi(np.deg2rad(pred_steer - gt_steer_kpt))))
     frame_roll_err = np.abs(pred_roll - gt_roll_kpt)
+    frame_crank_err = np.rad2deg(np.abs(_wrap_pi(np.deg2rad(pred_crank - gt_crank_kpt))))
     joint_dyn_corr = {
         "steer_err_mean_deg": float(np.mean(frame_steer_err)),
         "roll_err_mean_deg": float(np.mean(frame_roll_err)),
+        "crank_err_mean_deg": float(np.mean(frame_crank_err)),
     }
 
     return {
@@ -205,17 +358,14 @@ def compute_dynamics_metrics(
         "roll_velocity_mae_deg_per_frame": _velocity_mae(
             np.deg2rad(pred_roll), np.deg2rad(gt_roll_kpt)
         ),
+        "crank_velocity_mae_deg_per_frame": _velocity_mae(
+            np.deg2rad(pred_crank), np.deg2rad(gt_crank_kpt)
+        ),
         "mujoco_gt": mujoco_metrics,
         "steer_hub_only": steer_hub_diagnostic,
         "steer_error_vs_magnitude": _error_vs_magnitude(pred_steer, gt_steer_kpt),
         "roll_error_vs_magnitude": _error_vs_magnitude(pred_roll, gt_roll_kpt),
         "joint_dynamics_summary": joint_dyn_corr,
         "per_joint_mpjpe_m": {str(j): float(per_joint_mpjpe[j]) for j in range(len(per_joint_mpjpe))},
-        "time_series": {
-            "clip_id": viz_clip_id,
-            "pred_steer_deg": pred_steer_viz.tolist(),
-            "gt_steer_deg": gt_steer_mujoco_viz.tolist(),
-            "pred_roll_deg": pred_roll_viz.tolist(),
-            "gt_roll_deg": gt_roll_kpt_viz.tolist(),
-        },
+        "time_series": time_series,
     }

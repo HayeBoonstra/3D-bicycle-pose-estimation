@@ -45,9 +45,10 @@ from data_generation_pipeline_tools.bicycle_keypoint_schema import (  # noqa: E4
 import imageio.v2 as imageio  # noqa: E402
 
 from data_generation_pipeline_tools.visualize_bicycle_pose3d import (  # noqa: E402
+    PART_COLORS_PRED,
     _finalize_3d_axes,
     axis_limits_for_poses,
-    draw_skeleton,
+    draw_skeleton_grouped,
     reorient_for_display,
 )
 from data_generation_pipeline_tools.visualize_raw_annotations import (  # noqa: E402
@@ -219,7 +220,7 @@ def export_lifted_3d(
 
     fig = plt.figure(figsize=(7.2, 6.4), dpi=120)
     ax = fig.add_subplot(1, 1, 1, projection="3d")
-    draw_skeleton(ax, pose, edgecolor="#00457E", linewidth=2.4, pointcolor="#00457E")
+    draw_skeleton_grouped(ax, pose, part_colors=PART_COLORS_PRED, linewidth=2.4, pointcolor="#00457E")
     _finalize_3d_axes(ax, lo, hi, elev=elev, azim=azim, invert_z=True)
 
     buf = io.BytesIO()

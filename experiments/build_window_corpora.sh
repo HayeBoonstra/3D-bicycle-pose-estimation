@@ -5,8 +5,8 @@
 # fraction matches the main-analysis baseline. T=243 is omitted — use capacity_b there.
 #
 # Reuses existing per-frame RTMPose + RF-DETR annotations; only clip boundaries change.
-# Uses clip-level train/val/test splits (seed 7) so the same source videos stay in each split
-# across all T.
+# Uses window-level train/val/test splits (same as PoseMamba_f243s81_detected2d / capacity_b):
+# every clip contributes train windows; val/test hold out ~10% of windows each, covering all 43+ test clips.
 #
 # Usage:
 #   ./experiments/build_window_corpora.sh
@@ -19,7 +19,8 @@
 #   OUTPUT_ROOT       Parent of PoseMamba_f{T}s{S}_detected2d folders
 #   WINDOW_SIZES      Space-separated T values (default: "27 81 121 162")
 #   STRIDE_DIVISOR    Stride = T / STRIDE_DIVISOR (default: 3, matching f243s81)
-#   SPLIT_SEED        Random seed for clip splits (default: 7)
+#   SPLIT_SEED        Random seed for window splits (default: 7, matches f243s81)
+#   FORCE_REBUILD       Set to 1 to rebuild even if corpus folders exist
 #   CONDA_ENV         Conda env with torch + repo deps (default: posemamba)
 set -euo pipefail
 
@@ -30,6 +31,7 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-${SSD_BASE}/posemamba_training_sequences}"
 WINDOW_SIZES="${WINDOW_SIZES:-27 81 121 162}"
 STRIDE_DIVISOR="${STRIDE_DIVISOR:-3}"
 SPLIT_SEED="${SPLIT_SEED:-7}"
+FORCE_REBUILD="${FORCE_REBUILD:-0}"
 CONDA_ENV="${CONDA_ENV:-posemamba}"
 BUILD_SCRIPT="${REPO_ROOT}/3d_keypoint_detector_training/build_sequences.py"
 
@@ -70,12 +72,29 @@ build_one() {
   local stride
   stride="$(stride_for_window "${window_size}")"
   local corpus_dir="${OUTPUT_ROOT}/PoseMamba_f${window_size}s${stride}_detected2d"
-  if [[ -d "${corpus_dir}/BICYCLE/train" ]] && [[ -n "$(ls -A "${corpus_dir}/BICYCLE/train" 2>/dev/null || true)" ]]; then
-    echo "[skip] T=${window_size} s=${stride}: corpus already exists at ${corpus_dir}"
-    return 0
+  if [[ "${FORCE_REBUILD}" != "1" && -f "${corpus_dir}/dataset_manifest.json" ]]; then
+    local ok
+    ok="$(python3 - "${corpus_dir}/dataset_manifest.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+mode = manifest.get("split_mode", "")
+train_clips = manifest.get("split_clip_counts", {}).get("train", 0)
+test_clips = manifest.get("split_clip_counts", {}).get("test", 0)
+train_windows = manifest.get("split_sample_counts", {}).get("train", 0)
+print("ok" if mode == "window" and train_clips >= 40 and test_clips >= 43 and train_windows > 0 else "rebuild")
+PY
+)"
+    if [[ "${ok}" == "ok" ]]; then
+      echo "[skip] T=${window_size} s=${stride}: window-split corpus OK at ${corpus_dir}"
+      return 0
+    fi
+    echo "[rebuild] T=${window_size} s=${stride}: corpus needs window-level split -> ${corpus_dir}"
   fi
 
-  echo "[build] T=${window_size} stride=${stride} (T/${STRIDE_DIVISOR}) -> ${corpus_dir}"
+  echo "[build] T=${window_size} stride=${stride} (T/${STRIDE_DIVISOR}) split=window -> ${corpus_dir}"
   run_python "${BUILD_SCRIPT}" \
     --raw-root "${RAW_ROOT}" \
     --output-root "${OUTPUT_ROOT}" \
@@ -83,7 +102,7 @@ build_one() {
     --stride "${stride}" \
     --eval-stride "${window_size}" \
     --slice-style contiguous \
-    --split-mode clip \
+    --split-mode window \
     --seed "${SPLIT_SEED}" \
     --input-2d detected \
     --bbox-source detection \
@@ -97,10 +116,11 @@ from pathlib import Path
 
 manifest = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 counts = manifest.get("split_sample_counts", {})
-per_clip = manifest.get("windows_per_source_clip", {})
+clip_counts = manifest.get("split_clip_counts", {})
 print(
-    f"  train={counts.get('train', 0)} val={counts.get('val', 0)} "
-    f"test={counts.get('test', 0)} "
+    f"  clips train={clip_counts.get('train', 0)} val={clip_counts.get('val', 0)} "
+    f"test={clip_counts.get('test', 0)} | "
+    f"windows train={counts.get('train', 0)} val={counts.get('val', 0)} test={counts.get('test', 0)}"
 )
 PY
   fi

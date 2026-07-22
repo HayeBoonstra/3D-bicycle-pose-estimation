@@ -26,6 +26,8 @@ BICYCLE_POSE_DATA_ROOT="${BICYCLE_POSE_DATA_ROOT:-${REPO_ROOT}/data/bicycle_pose
 STATIC_STAGE12_SPLIT="${STATIC_STAGE12_SPLIT:-test}"
 STATIC_STAGE12_LIMIT="${STATIC_STAGE12_LIMIT:-}"
 SKIP_STATIC_STAGE12="${SKIP_STATIC_STAGE12:-0}"
+EXTRACT_BATCH_SIZE="${EXTRACT_BATCH_SIZE:-0}"
+EXTRACT_INFERENCE_MODE="${EXTRACT_INFERENCE_MODE:-window}"
 
 export RAW_ROOT DATA_ROOT
 
@@ -82,20 +84,28 @@ if [[ -n "${CHECKPOINT}" ]]; then
   run_py "${REPO_ROOT}/evaluation/extract.py" \
     --checkpoint "${CHECKPOINT}" \
     --out "${RESULTS_DIR}" \
-    --experiment-name "${exp_name}"
+    --experiment-name "${exp_name}" \
+    --batch-size "${EXTRACT_BATCH_SIZE}" \
+    --inference-mode "${EXTRACT_INFERENCE_MODE}"
 else
   echo "[run_all] extracting all checkpoints under posemamba_weights/"
   shopt -s nullglob
   for ckpt in "${REPO_ROOT}"/posemamba_weights/*/best_epoch.bin; do
     exp_name="$(basename "$(dirname "${ckpt}")")"
     if [[ -f "${RESULTS_DIR}/${exp_name}/preds_3d.npz" ]]; then
-      echo "[skip] ${exp_name}: preds_3d.npz exists"
-      continue
+      summary="${RESULTS_DIR}/${exp_name}/extract_summary.json"
+      if [[ -f "${summary}" ]] && grep -q "\"inference_mode\": \"${EXTRACT_INFERENCE_MODE}\"" "${summary}"; then
+        echo "[skip] ${exp_name}: preds_3d.npz exists (${EXTRACT_INFERENCE_MODE})"
+        continue
+      fi
+      echo "[re-extract] ${exp_name}: updating to ${EXTRACT_INFERENCE_MODE} inference"
     fi
     run_py "${REPO_ROOT}/evaluation/extract.py" \
       --checkpoint "${ckpt}" \
       --out "${RESULTS_DIR}" \
-      --experiment-name "${exp_name}"
+      --experiment-name "${exp_name}" \
+      --batch-size "${EXTRACT_BATCH_SIZE}" \
+      --inference-mode "${EXTRACT_INFERENCE_MODE}"
   done
 fi
 

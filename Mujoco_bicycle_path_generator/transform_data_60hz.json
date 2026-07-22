@@ -1,0 +1,21 @@
+{
+  "trajectory_csv": "transform_data_60hz.csv",
+  "pattern": "composite",
+  "pattern_segments": [
+    "accelerate",
+    "soft-turn-left",
+    "coast"
+  ],
+  "seed": 42,
+  "physics_hz": 200,
+  "display_hz": 60,
+  "requested_display_frames": 600,
+  "exported_display_frames": 600,
+  "physics_frames": 2000,
+  "target_velocity_mps": null,
+  "min_target_velocity_mps": 2.0,
+  "max_target_velocity_mps": 5.0,
+  "max_abs_roll_deg": 17.70205062891517,
+  "max_roll_deg_limit": 45.0,
+  "composite_profile": "stable"
+}

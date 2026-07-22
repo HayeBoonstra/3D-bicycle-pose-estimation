@@ -14,7 +14,13 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from evaluation.common import DEFAULT_MAX_CLIP_MPJPE_MM, ensure_dir  # noqa: E402
+from evaluation.common import (  # noqa: E402
+    CAPACITY_EXPERIMENTS,
+    CAPACITY_GT_TRAINING_EXPERIMENTS,
+    DEFAULT_MAX_CLIP_MPJPE_MM,
+    EXCLUDED_ABLATION_EXPERIMENTS,
+    ensure_dir,
+)
 from evaluation.metrics import (  # noqa: E402
     compute_capacity_frontier,
     compute_detection_metrics,
@@ -53,14 +59,26 @@ def _flatten(prefix: str, d: dict[str, Any], out: dict[str, Any]) -> None:
             out[key] = v
 
 
+def _latex_text(text: str) -> str:
+    """Make plain text safe for LaTeX captions and table cells (underscores break text mode)."""
+    return text.replace("_", " ")
+
+
+def _latex_experiment(name: str) -> str:
+    """Readable experiment label for LaTeX tables."""
+    return _latex_text(name.replace("_gt2d", " GT-2D"))
+
+
 def _write_tex_table(rows: list[dict[str, Any]], columns: list[tuple[str, str]], path: Path, caption: str) -> None:
+    safe_caption = _latex_text(caption)
+    safe_headers = [_latex_text(h) for _, h in columns]
     lines = [
         "\\begin{table}[t]",
         "\\centering",
-        f"\\caption{{{caption}}}",
+        f"\\caption{{{safe_caption}}}",
         "\\begin{tabular}{" + "l" + "r" * (len(columns) - 1) + "}",
         "\\toprule",
-        " & ".join(h for _, h in columns) + " \\\\",
+        " & ".join(safe_headers) + " \\\\",
         "\\midrule",
     ]
     for row in rows:
@@ -70,7 +88,7 @@ def _write_tex_table(rows: list[dict[str, Any]], columns: list[tuple[str, str]],
             if isinstance(v, float):
                 vals.append(f"{v:.2f}")
             else:
-                vals.append(str(v))
+                vals.append(_latex_text(str(v)))
         lines.append(" & ".join(vals) + " \\\\")
     lines.extend(["\\bottomrule", "\\end{tabular}", "\\end{table}"])
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -81,6 +99,105 @@ def _first_existing(*paths: Path) -> Optional[Path]:
         if path.is_file():
             return path
     return None
+
+
+def _load_experiment_metrics(results_dir: Path, exp_name: str) -> dict[str, Any] | None:
+    path = results_dir / exp_name / "metrics.json"
+    if not path.is_file():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _capacity_gt2d_rows(results_dir: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for exp_name in CAPACITY_EXPERIMENTS:
+        gt2d_name = f"{exp_name}_gt2d"
+        metrics = _load_experiment_metrics(results_dir, gt2d_name)
+        if metrics is None:
+            continue
+        pose3d = metrics.get("pose3d", {})
+        dynamics = metrics.get("dynamics", {})
+        rows.append(
+            {
+                "model": exp_name.replace("capacity_", "").upper(),
+                "mpjpe_mm": pose3d.get("mpjpe_mm"),
+                "n_mpjpe_mm": pose3d.get("n_mpjpe_mm"),
+                "mpjve_mm_per_s": pose3d.get("mpjve_mm_per_s"),
+                "mpjae_mm_per_s2": pose3d.get("mpjae_mm_per_s2"),
+                "roll_rmse_deg": dynamics.get("roll", {}).get("rmse_deg"),
+                "steer_rmse_deg": dynamics.get("steer", {}).get("rmse_deg"),
+                "crank_rmse_deg": dynamics.get("crank", {}).get("rmse_deg"),
+            }
+        )
+    return rows
+
+
+def _capacity_gt_training_rows(results_dir: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for exp_name in CAPACITY_GT_TRAINING_EXPERIMENTS:
+        metrics = _load_experiment_metrics(results_dir, exp_name)
+        if metrics is None:
+            continue
+        pose3d = metrics.get("pose3d", {})
+        dynamics = metrics.get("dynamics", {})
+        rows.append(
+            {
+                "model": exp_name.replace("capacity_", "").replace("_gt", "").upper(),
+                "mpjpe_mm": pose3d.get("mpjpe_mm"),
+                "n_mpjpe_mm": pose3d.get("n_mpjpe_mm"),
+                "mpjve_mm_per_s": pose3d.get("mpjve_mm_per_s"),
+                "mpjae_mm_per_s2": pose3d.get("mpjae_mm_per_s2"),
+                "roll_rmse_deg": dynamics.get("roll", {}).get("rmse_deg"),
+                "steer_rmse_deg": dynamics.get("steer", {}).get("rmse_deg"),
+                "crank_rmse_deg": dynamics.get("crank", {}).get("rmse_deg"),
+            }
+        )
+    return rows
+
+
+def _capacity_detected_vs_gt_training_rows(results_dir: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for exp_name in CAPACITY_EXPERIMENTS:
+        gt_name = f"{exp_name}_gt"
+        det_metrics = _load_experiment_metrics(results_dir, exp_name)
+        gt_metrics = _load_experiment_metrics(results_dir, gt_name)
+        if det_metrics is None or gt_metrics is None:
+            continue
+        det_mpjpe = det_metrics.get("pose3d", {}).get("mpjpe_mm")
+        gt_mpjpe = gt_metrics.get("pose3d", {}).get("mpjpe_mm")
+        if det_mpjpe is None or gt_mpjpe is None:
+            continue
+        rows.append(
+            {
+                "model": exp_name.replace("capacity_", "").upper(),
+                "mpjpe_detected_mm": det_mpjpe,
+                "mpjpe_gt_training_mm": gt_mpjpe,
+                "input_noise_gap_mm": float(det_mpjpe) - float(gt_mpjpe),
+            }
+        )
+    return rows
+
+
+def _capacity_detected_vs_gt2d_rows(results_dir: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for exp_name in CAPACITY_EXPERIMENTS:
+        det_metrics = _load_experiment_metrics(results_dir, exp_name)
+        gt_metrics = _load_experiment_metrics(results_dir, f"{exp_name}_gt2d")
+        if det_metrics is None or gt_metrics is None:
+            continue
+        det_mpjpe = det_metrics.get("pose3d", {}).get("mpjpe_mm")
+        gt_mpjpe = gt_metrics.get("pose3d", {}).get("mpjpe_mm")
+        if det_mpjpe is None or gt_mpjpe is None:
+            continue
+        rows.append(
+            {
+                "model": exp_name.replace("capacity_", "").upper(),
+                "mpjpe_detected_mm": det_mpjpe,
+                "mpjpe_gt2d_mm": gt_mpjpe,
+                "frontend_gap_mm": float(det_mpjpe) - float(gt_mpjpe),
+            }
+        )
+    return rows
 
 
 def parse_args() -> argparse.Namespace:
@@ -185,8 +302,13 @@ def main() -> None:
 
         row: dict[str, Any] = {"experiment": exp_name}
         _flatten("", metrics.get("pose3d", {}), row)
-        _flatten("", metrics.get("dynamics", {}).get("steer", {}), row)
+        dyn_steer = metrics.get("dynamics", {}).get("steer", {})
         dyn_roll = metrics.get("dynamics", {}).get("roll", {})
+        dyn_crank = metrics.get("dynamics", {}).get("crank", {})
+        row["steer_rmse_deg"] = dyn_steer.get("rmse_deg")
+        row["crank_rmse_deg"] = dyn_crank.get("rmse_deg")
+        row["crank_mae_deg"] = dyn_crank.get("mae_deg")
+        row["crank_pearson_r"] = dyn_crank.get("pearson_r")
         row["roll_rmse_deg"] = dyn_roll.get("rmse_deg")
         row["roll_mae_deg"] = dyn_roll.get("mae_deg")
         if "efficiency" in metrics:
@@ -232,7 +354,7 @@ def main() -> None:
              {"metric": "AP@0.5 (proxy)", "value": det.get("ap50_proxy")}],
             [("metric", "Metric"), ("value", "Value")],
             tables_dir / "detection_static_headline.tex",
-            "RF-DETR bicycle detection on static-frame test set (bicycle_pose_dataset).",
+            "RF-DETR bicycle detection on static-frame test set (bicycle pose dataset).",
         )
     if static_metrics.get("pose2d"):
         p2 = static_metrics["pose2d"]
@@ -242,16 +364,108 @@ def main() -> None:
              {"metric": "Mean NME", "value": p2.get("mean_nme")}],
             [("metric", "Metric"), ("value", "Value")],
             tables_dir / "pose2d_static_headline.tex",
-            "RTMPose-L 2D keypoint accuracy on static-frame test set (bicycle_pose_dataset).",
+            "RTMPose-L 2D keypoint accuracy on static-frame test set (bicycle pose dataset).",
         )
     if summary_rows:
         _write_tex_table(
-            [{"experiment": r["experiment"], "mpjpe_mm": r.get("mpjpe_mm"), "roll_rmse_deg": r.get("roll_rmse_deg")}
-             for r in summary_rows],
-            [("experiment", "Experiment"), ("mpjpe_mm", "MPJPE (mm)"), ("roll_rmse_deg", "Roll RMSE (deg)")],
+            [
+                {
+                    "experiment": _latex_experiment(r["experiment"]),
+                    "mpjpe_mm": r.get("mpjpe_mm"),
+                    "n_mpjpe_mm": r.get("n_mpjpe_mm"),
+                    "mpjve_mm_per_s": r.get("mpjve_mm_per_s"),
+                    "mpjae_mm_per_s2": r.get("mpjae_mm_per_s2"),
+                    "roll_rmse_deg": r.get("roll_rmse_deg"),
+                    "steer_rmse_deg": r.get("steer_rmse_deg"),
+                    "crank_rmse_deg": r.get("crank_rmse_deg"),
+                }
+                for r in summary_rows
+                if r["experiment"] not in EXCLUDED_ABLATION_EXPERIMENTS
+            ],
+            [
+                ("experiment", "Experiment"),
+                ("mpjpe_mm", "MPJPE (mm)"),
+                ("n_mpjpe_mm", "NMPJPE (mm)"),
+                ("mpjve_mm_per_s", "MPJVE (mm/s)"),
+                ("mpjae_mm_per_s2", "MPJAE (mm/s$^2$)"),
+                ("roll_rmse_deg", "Roll RMSE (deg)"),
+                ("steer_rmse_deg", "Steer RMSE (deg)"),
+                ("crank_rmse_deg", "Crank RMSE (deg)"),
+            ],
             tables_dir / "pose3d_ablations.tex",
-            "PoseMamba 3D lifting ablation results (detected-2D input).",
+            "PoseMamba 3D lifting ablation results (detected-2D input). "
+            "MPJVE and MPJAE are mean per-joint velocity and acceleration errors on root-relative 3D. "
+            "Roll, steer, and crank RMSE are kinematic pred vs kinematic GT keypoints; "
+            "crank error is circular (wrapped to $\\pm 180^\\circ$).",
         )
+
+        gt2d_rows = _capacity_gt2d_rows(results_dir)
+        if gt2d_rows:
+            _write_tex_table(
+                gt2d_rows,
+                [
+                    ("model", "Model"),
+                    ("mpjpe_mm", "MPJPE (mm)"),
+                    ("n_mpjpe_mm", "NMPJPE (mm)"),
+                    ("mpjve_mm_per_s", "MPJVE (mm/s)"),
+                    ("mpjae_mm_per_s2", "MPJAE (mm/s$^2$)"),
+                    ("roll_rmse_deg", "Roll RMSE (deg)"),
+                    ("steer_rmse_deg", "Steer RMSE (deg)"),
+                    ("crank_rmse_deg", "Crank RMSE (deg)"),
+                ],
+                tables_dir / "pose3d_capacity_gt2d.tex",
+                "PoseMamba 3D lifting capacity results with GT-projected 2D keypoints "
+                "normalized in the detector-bbox frame.",
+            )
+
+        gt_training_rows = _capacity_gt_training_rows(results_dir)
+        if gt_training_rows:
+            _write_tex_table(
+                gt_training_rows,
+                [
+                    ("model", "Model"),
+                    ("mpjpe_mm", "MPJPE (mm)"),
+                    ("n_mpjpe_mm", "NMPJPE (mm)"),
+                    ("mpjve_mm_per_s", "MPJVE (mm/s)"),
+                    ("mpjae_mm_per_s2", "MPJAE (mm/s$^2$)"),
+                    ("roll_rmse_deg", "Roll RMSE (deg)"),
+                    ("steer_rmse_deg", "Steer RMSE (deg)"),
+                    ("crank_rmse_deg", "Crank RMSE (deg)"),
+                ],
+                tables_dir / "pose3d_capacity_gt.tex",
+                "PoseMamba 3D lifting capacity results trained and evaluated on the "
+                "GT-projected 2D corpus (gt\\_bbox normalization).",
+            )
+
+        gt_training_comparison_rows = _capacity_detected_vs_gt_training_rows(results_dir)
+        if gt_training_comparison_rows:
+            _write_tex_table(
+                gt_training_comparison_rows,
+                [
+                    ("model", "Model"),
+                    ("mpjpe_detected_mm", "MPJPE detected train (mm)"),
+                    ("mpjpe_gt_training_mm", "MPJPE GT train (mm)"),
+                    ("input_noise_gap_mm", "Input-noise gap (mm)"),
+                ],
+                tables_dir / "pose3d_capacity_detected_vs_gt.tex",
+                "Capacity ablation: detected-2D vs GT-2D training, each evaluated on its "
+                "matching test corpus. Positive gaps indicate RTMPose input noise cost.",
+            )
+
+        comparison_rows = _capacity_detected_vs_gt2d_rows(results_dir)
+        if comparison_rows:
+            _write_tex_table(
+                comparison_rows,
+                [
+                    ("model", "Model"),
+                    ("mpjpe_detected_mm", "MPJPE detected (mm)"),
+                    ("mpjpe_gt2d_mm", "MPJPE GT-2D (mm)"),
+                    ("frontend_gap_mm", "Front-end gap (mm)"),
+                ],
+                tables_dir / "pose3d_capacity_detected_vs_gt2d.tex",
+                "Capacity ablation: detected RTMPose 2D vs GT-projected 2D, both normalized "
+                "in the detector-bbox frame. Negative gaps indicate detected-2D training distribution effects.",
+            )
 
     print(f"[compute_stats] wrote metrics for {len(summary_rows)} experiments -> {summary_csv}")
 

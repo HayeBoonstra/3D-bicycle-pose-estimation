@@ -3,7 +3,8 @@
 
 Generates top-down path plots and heading/speed profile panels for every
 pattern used in synthetic data generation (see Mujoco_bicycle_path_generator/
-trajectory_patterns.py). Hard-turn and composite patterns are omitted.
+trajectory_patterns.py). Hard-turn and composite patterns are omitted from
+the per-pattern grid; composite randomization is shown in a separate overlay.
 
 Outputs (PDF + PNG) are written next to this script.
 """
@@ -28,6 +29,7 @@ from trajectory_patterns import (  # noqa: E402
     _segment_yaw,
     _speed_segment,
     _stabilize_angle_profile,
+    build_angle_and_velocity_profiles,
     random_from_numpy,
 )
 
@@ -99,17 +101,49 @@ def generate_profile(
     return resample_to_display(yaw, speed, physics_hz, display_hz)
 
 
-def integrate_topdown_path(yaw_deg, speed_mps, dt_s):
-    """Integrate heading + speed into a top-down path (start heading = +Y)."""
-    relative_heading = np.deg2rad(yaw_deg - yaw_deg[0])
+def integrate_topdown_path(yaw_deg, speed_mps, dt_s, *, normalize_start_heading=True):
+    """Integrate heading + speed into a top-down path starting at the origin."""
+    if normalize_start_heading:
+        heading_rad = np.deg2rad(yaw_deg - yaw_deg[0])
+    else:
+        heading_rad = np.deg2rad(yaw_deg)
     x = np.zeros(len(yaw_deg), dtype=float)
     y = np.zeros(len(yaw_deg), dtype=float)
     for idx in range(1, len(yaw_deg)):
         v = float(speed_mps[idx - 1])
-        theta = relative_heading[idx - 1]
+        theta = heading_rad[idx - 1]
         x[idx] = x[idx - 1] + v * dt_s * np.sin(theta)
         y[idx] = y[idx - 1] + v * dt_s * np.cos(theta)
     return x, y
+
+
+def generate_composite_profile(
+    *,
+    seed,
+    trajectory_frames,
+    physics_hz,
+    display_hz,
+    min_speed,
+    max_speed,
+    segment_min_seconds,
+    segment_max_seconds,
+    composite_profile,
+    max_yaw_rate_deg_s,
+):
+    physics_frames = int(math.ceil(trajectory_frames * physics_hz / display_hz))
+    yaw, speed, _segments = build_angle_and_velocity_profiles(
+        pattern="composite",
+        physics_frames=physics_frames,
+        seed=seed,
+        min_target_velocity=min_speed,
+        max_target_velocity=max_speed,
+        segment_min_seconds=segment_min_seconds,
+        segment_max_seconds=segment_max_seconds,
+        physics_hz=physics_hz,
+        composite_profile=composite_profile,
+    )
+    yaw = _stabilize_angle_profile(yaw, physics_hz, max_yaw_rate_deg_s=max_yaw_rate_deg_s)
+    return resample_to_display(yaw, speed, physics_hz, display_hz)
 
 
 def _style_axes(ax):
@@ -177,6 +211,64 @@ def plot_topdown_grid(profiles, output_stem: Path, dpi: int):
     plt.close(fig)
 
 
+def plot_randomized_composites_topdown(
+    paths,
+    output_stem: Path,
+    dpi: int,
+    *,
+    composite_profile: str,
+    segment_min_seconds: float,
+    segment_max_seconds: float,
+):
+    fig, ax = plt.subplots(figsize=(8.5, 8.5), constrained_layout=True)
+    cmap = plt.get_cmap("turbo")
+    n = len(paths)
+
+    x_min = y_min = math.inf
+    x_max = y_max = -math.inf
+    for idx, (x, y) in enumerate(paths):
+        color = cmap(idx / max(n - 1, 1))
+        ax.plot(x, y, color=color, linewidth=1.2, alpha=0.72, solid_capstyle="round")
+        x_min = min(x_min, float(x.min()))
+        x_max = max(x_max, float(x.max()))
+        y_min = min(y_min, float(y.min()))
+        y_max = max(y_max, float(y.max()))
+
+    ax.scatter(0.0, 0.0, s=42, color="#27ae60", zorder=4, edgecolors="white", linewidths=0.6)
+    center_x = 0.5 * (x_min + x_max)
+    center_y = 0.5 * (y_min + y_max)
+    half_span = 0.5 * max(x_max - x_min, y_max - y_min)
+    half_span = max(half_span * 1.08, 1.0)
+    ax.set_xlim(center_x - half_span, center_x + half_span)
+    ax.set_ylim(center_y - half_span, center_y + half_span)
+    _style_axes(ax)
+
+    legend_handles = [
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="#27ae60", markersize=7, label="Shared start"),
+        Line2D([0], [0], color="#888888", linewidth=1.2, alpha=0.72, label="Composite sample"),
+    ]
+    ax.legend(handles=legend_handles, loc="upper right", fontsize=9, frameon=True, framealpha=0.9)
+    fig.suptitle(
+        f"Composite trajectory randomization ({n} samples, top-down)",
+        fontsize=12,
+        fontweight="bold",
+        y=1.02,
+    )
+    ax.set_title(
+        f"Segments drawn from {composite_profile} pool, "
+        f"{segment_min_seconds:.0f}–{segment_max_seconds:.0f} s each",
+        fontsize=9,
+        color="#555555",
+        pad=8,
+    )
+
+    for ext in ("pdf", "png"):
+        out = output_stem.with_suffix(f".{ext}")
+        fig.savefig(out, dpi=dpi, bbox_inches="tight")
+        print(f"Wrote {out}")
+    plt.close(fig)
+
+
 def plot_profile_grid(profiles, output_stem: Path, dpi: int):
     n = len(profiles)
     ncols = 5
@@ -220,12 +312,33 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--dpi", type=int, default=300)
-    parser.add_argument("--trajectory-frames", type=int, default=729, help="Export length at display Hz")
+    parser.add_argument("--trajectory-frames", type=int, default=729, help="Export length at display Hz (per-pattern grid)")
+    parser.add_argument(
+        "--composite-trajectory-frames",
+        type=int,
+        default=2100,
+        help="Export length at display Hz for composite overlay trajectories",
+    )
     parser.add_argument("--physics-hz", type=int, default=200)
     parser.add_argument("--display-hz", type=int, default=60)
     parser.add_argument("--min-speed", type=float, default=2.0)
     parser.add_argument("--max-speed", type=float, default=5.0)
     parser.add_argument("--seed", type=int, default=42, help="Base RNG seed (incremented per pattern)")
+    parser.add_argument(
+        "--composite-count",
+        type=int,
+        default=30,
+        help="Number of randomized composite trajectories for the overlay figure",
+    )
+    parser.add_argument(
+        "--composite-profile",
+        choices=("stable", "full"),
+        default="stable",
+        help="Segment pool for composite trajectories (matches bicycle_test.py)",
+    )
+    parser.add_argument("--segment-min-seconds", type=float, default=2.0)
+    parser.add_argument("--segment-max-seconds", type=float, default=7.0)
+    parser.add_argument("--max-yaw-rate-deg-s", type=float, default=40.0)
     args = parser.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -246,6 +359,32 @@ def main():
 
     plot_topdown_grid(profiles, args.output_dir / "trajectory_patterns_topdown", dpi=args.dpi)
     plot_profile_grid(profiles, args.output_dir / "trajectory_patterns_profiles", dpi=args.dpi)
+
+    composite_paths = []
+    for offset in range(args.composite_count):
+        yaw, speed = generate_composite_profile(
+            seed=args.seed + 10_000 + offset,
+            trajectory_frames=args.composite_trajectory_frames,
+            physics_hz=args.physics_hz,
+            display_hz=args.display_hz,
+            min_speed=args.min_speed,
+            max_speed=args.max_speed,
+            segment_min_seconds=args.segment_min_seconds,
+            segment_max_seconds=args.segment_max_seconds,
+            composite_profile=args.composite_profile,
+            max_yaw_rate_deg_s=args.max_yaw_rate_deg_s,
+        )
+        composite_paths.append(
+            integrate_topdown_path(yaw, speed, dt_s, normalize_start_heading=False)
+        )
+    plot_randomized_composites_topdown(
+        composite_paths,
+        args.output_dir / "trajectory_patterns_composite_randomized",
+        dpi=args.dpi,
+        composite_profile=args.composite_profile,
+        segment_min_seconds=args.segment_min_seconds,
+        segment_max_seconds=args.segment_max_seconds,
+    )
 
 
 if __name__ == "__main__":

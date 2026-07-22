@@ -347,6 +347,33 @@ def _slice_clip(clip: ClipData, window_size: int, stride: int, slice_style: str)
     return _slice_clip_contiguous(clip, window_size, stride)
 
 
+def _load_reference_splits(manifest_path: Path) -> dict[str, list[str]]:
+    """Load train/val/test clip-id lists from a reference corpus manifest."""
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    splits = manifest.get("splits")
+    if not isinstance(splits, dict):
+        raise ValueError(f"{manifest_path}: missing 'splits' dict in manifest")
+    out: dict[str, list[str]] = {}
+    for split in ("train", "val", "test"):
+        ids = splits.get(split, [])
+        if not isinstance(ids, list):
+            raise ValueError(f"{manifest_path}: splits[{split!r}] must be a list")
+        out[split] = [str(x) for x in ids]
+    return out
+
+
+def _exclusive_split_from_reference(
+    reference_splits: dict[str, list[str]],
+    clip_ids: list[str],
+) -> dict[str, set[str]]:
+    """Map each clip to exactly one split, preferring test > val > train."""
+    all_ids = set(clip_ids)
+    test_ids = set(reference_splits.get("test", [])) & all_ids
+    val_ids = (set(reference_splits.get("val", [])) & all_ids) - test_ids
+    train_ids = all_ids - test_ids - val_ids
+    return {"train": train_ids, "val": val_ids, "test": test_ids}
+
+
 def _split_clip_ids(clip_ids: list[str], val_ratio: float, test_ratio: float, seed: int) -> dict[str, set[str]]:
     if val_ratio < 0 or test_ratio < 0:
         raise ValueError("val_ratio and test_ratio must be non-negative")
@@ -427,7 +454,11 @@ def build_sequences(args: argparse.Namespace) -> None:
     windows_per_source_clip: dict[str, int] = {}
     split_map: dict[str, set[str]] = {"train": set(), "val": set(), "test": set()}
     if args.split_mode == "clip":
-        split_map = _split_clip_ids([clip.clip_id for clip in clips], args.val_ratio, args.test_ratio, args.seed)
+        if args.reference_split_manifest is not None:
+            ref_splits = _load_reference_splits(args.reference_split_manifest.resolve())
+            split_map = _exclusive_split_from_reference(ref_splits, [clip.clip_id for clip in clips])
+        else:
+            split_map = _split_clip_ids([clip.clip_id for clip in clips], args.val_ratio, args.test_ratio, args.seed)
         split_stride = {
             "train": args.stride,
             "val": args.eval_stride,
@@ -490,7 +521,6 @@ def build_sequences(args: argparse.Namespace) -> None:
 
     split_clip_counts = {k: len(v) for k, v in split_map.items()}
     window_counts = list(windows_per_source_clip.values())
-    input_2d_source = "gt_projection"
     if args.input_2d == "detected":
         if args.bbox_source == "detection":
             input_2d_source = "rtmpose_detection_bbox"
@@ -498,6 +528,14 @@ def build_sequences(args: argparse.Namespace) -> None:
             input_2d_source = "rtmpose_full_image"
         else:
             input_2d_source = "rtmpose_keypoint_bbox"
+    elif args.bbox_source == "gt":
+        input_2d_source = "gt_projection_gt_bbox"
+    elif args.bbox_source == "keypoints":
+        input_2d_source = "gt_projection_keypoint_bbox"
+    elif args.bbox_source == "detection":
+        input_2d_source = "gt_projection_detection_bbox"
+    else:
+        input_2d_source = "gt_projection"
     manifest = {
         "joint_names": BICYCLE_KEYPOINT_NAMES,
         "window_size": args.window_size,
@@ -528,6 +566,9 @@ def build_sequences(args: argparse.Namespace) -> None:
             "train_implied": max(0.0, 1.0 - args.val_ratio - args.test_ratio),
         },
         "split_mode": args.split_mode,
+        "reference_split_manifest": (
+            str(args.reference_split_manifest.resolve()) if args.reference_split_manifest else None
+        ),
         "split_clip_counts": split_clip_counts,
         "splits": {k: sorted(list(v)) for k, v in split_map.items()},
         "normalization": "bbox_center_scale",
@@ -621,6 +662,15 @@ def parse_args() -> argparse.Namespace:
         choices=("clip", "window"),
         default="clip",
         help="clip: keep each clip in one split; window: split sliced windows across train/val/test.",
+    )
+    parser.add_argument(
+        "--reference-split-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Optional dataset_manifest.json from a reference corpus (e.g. PoseMamba_f243s81_detected2d). "
+            "When split-mode=clip, reuse its train/val/test clip IDs so window ablations share the same test clips."
+        ),
     )
     parser.add_argument("--use-confidence", action="store_true")
     parser.add_argument("--qa-only", action="store_true")

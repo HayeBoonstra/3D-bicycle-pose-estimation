@@ -7,7 +7,13 @@ from pathlib import Path
 
 import numpy as np
 
-from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX
+from data_generation_pipeline_tools.bicycle_keypoint_schema import (
+    BICYCLE_KEYPOINT_NAMES,
+    BICYCLE_SKELETON_NAMES,
+    KEYPOINT_INDEX,
+    SKELETON_PART_GROUPS,
+    validate_skeleton_part_groups,
+)
 from data_generation_pipeline_tools.visualize_bicycle_pose3d import (
     bicycle_crank_angle,
     load_motion,
@@ -90,6 +96,22 @@ class VisualizeBicyclePose3DTests(unittest.TestCase):
             self.assertTrue(summary.exists())
             payload = json.loads(summary.read_text(encoding="utf-8"))
             self.assertEqual(payload["frames"], t)
+
+    def test_skeleton_part_groups_cover_all_edges(self) -> None:
+        validate_skeleton_part_groups()
+        grouped = [edge for edges in SKELETON_PART_GROUPS.values() for edge in edges]
+        self.assertEqual(len(grouped), len(BICYCLE_SKELETON_NAMES))
+        self.assertEqual(set(grouped), set(BICYCLE_SKELETON_NAMES))
+
+    def test_camera_view_reorient_flips_image_up(self) -> None:
+        pts = np.array([[0.1, -0.2, 0.3]], dtype=np.float32)
+        from data_generation_pipeline_tools.visualize_bicycle_pose3d import reorient_for_display, view_angles_for_reorient
+
+        out = reorient_for_display(pts, "camera_view")
+        np.testing.assert_allclose(out[0], [0.1, -0.3, 0.2], atol=1e-6)
+        elev, azim = view_angles_for_reorient("camera_view")
+        self.assertEqual(elev, 0.0)
+        self.assertEqual(azim, -90.0)
 
     def test_load_npy_roundtrip(self) -> None:
         t, j = 2, len(BICYCLE_KEYPOINT_NAMES)

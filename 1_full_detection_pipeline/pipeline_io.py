@@ -18,7 +18,7 @@ from keypoint_detector_pipeline.io_utils import iter_jsonl, write_jsonl
 from keypoint_detector_pipeline.schema import BICYCLE_KEYPOINT_NAMES, NUM_KEYPOINTS
 from keypoint_detector_pipeline.sequence_builder import normalize_points, rows_to_arrays
 
-CLIP_LEN = 243
+CLIP_LEN = 243  # legacy default; actual limit comes from checkpoint maxlen at runtime
 
 DETECTIONS_NAME = "detections.jsonl"
 KEYPOINTS_2D_NAME = "keypoints_2d.jsonl"
@@ -39,7 +39,24 @@ def count_frames(frames_dir: Path) -> int:
     return len(iter_frame_paths(frames_dir))
 
 
+def validate_clip_length(
+    num_frames: int,
+    *,
+    max_frames: int = 1800,
+    context: str = "pipeline",
+) -> None:
+    """Ensure measurement length is valid for full-sequence lifting."""
+    if num_frames <= 0:
+        raise ValueError(f"{context}: sequence must contain at least one frame, got {num_frames}")
+    if num_frames > max_frames:
+        raise ValueError(
+            f"{context}: sequence has {num_frames} frames, above default limit {max_frames}. "
+            f"Set POSEMAMBA_MAX_MEASUREMENT_FRAMES to raise the cap."
+        )
+
+
 def require_clip_length(num_frames: int, clip_len: int = CLIP_LEN) -> None:
+    """Deprecated strict 243-frame gate; kept for callers not yet migrated."""
     if num_frames != clip_len:
         raise ValueError(
             f"Pipeline v1 requires exactly {clip_len} frames, got {num_frames}. "
@@ -108,6 +125,7 @@ __all__ = [
     "iter_jsonl",
     "load_keypoints_2d_rows",
     "require_clip_length",
+    "validate_clip_length",
     "save_keypoints_3d_npz",
     "should_skip_output",
     "write_jsonl",

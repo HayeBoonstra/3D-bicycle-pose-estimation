@@ -1,9 +1,7 @@
 
         <mujoco model="bicycle">
             
-        <asset>
-            <mesh name="wheel_torus" builtin="supertorus" params="64 0.04 1 1" scale="0.35 0.35 0.35"/>
-        </asset>
+        <asset/>
         
             <default>
                 <joint limited="true" damping="0.01"/>
@@ -14,11 +12,18 @@
             <body name="bicycle" pos="0 0 0.35">
                 <freejoint name="bicycle_free"/>
                 <body name="frame" pos="0 0 0">
+                    <site name="k_bottom_bracket" type="sphere" size="0.01" pos="0.0 0.0 0.0"/>
+                    <site name="k_seat_stay" type="sphere" size="0.01" pos="-0.12811542732574777 0.0 0.4781332840130889"/>
+                    <site name="k_lower_head_tube" type="sphere" size="0.01" pos="0.425253080816971 0.0 0.5850627629637268"/>
+                    <site name="k_rear_hub_left" type="sphere" size="0.01" pos="-0.43 -0.02 0.05"/>
+                    <site name="k_rear_hub_right" type="sphere" size="0.01" pos="-0.43 0.02 0.05"/>
+                    <site name="k_rear_wheel_ground" type="sphere" size="0.01" pos="-0.43 0.0 -0.3056"/>
                     <geom name="seat tube" type="capsule" fromto="0.0 0.0 0.0  -0.1423504748063864 0.0 0.5312592044589877" size="0.016"/>
                     <geom name="seat post" type="capsule" fromto="-0.1423504748063864 0.0 0.5312592044589877  -0.16823237931663848 0.0 0.6278517870878945" size="0.016"/>
                     <body name="seat" pos="-0.16823237931663848 0.0 0.6278517870878945">
                         <geom name="seat" type="box" size="0.1 0.04 0.01"/>
                         <site name="seat_site" type="sphere" size="0.01" pos="0 0 0"/>
+                        <site name="k_saddle" type="sphere" size="0.01" pos="0 0 0"/>
                     </body>
                     <geom name="down tube" type="capsule" fromto="0.0 0.0 0.0  0.425253080816971 0.0 0.5850627629637268" size="0.016"/>
                     <geom name="top tube" type="capsule" fromto="0.425253080816971 0.0 0.5850627629637268  -0.1423504748063864 0.0 0.5312592044589877" size="0.016"/>
@@ -28,20 +33,27 @@
                     <geom name="seat stay right" type="capsule" fromto="-0.43 0.02 0.05  -0.12811542732574777 0.0 0.4781332840130889" size="0.016"/>
                     <body name="rear wheel" pos="-0.43 0.0 0.05" euler="90 0 0">
                         <joint name="rear wheel hinge" type="hinge" axis="0 0 -1" pos="0 0 0" limited="false"/>
-                        <geom name="rear wheel contact" type="cylinder" size="0.35559999999999997 0.015" rgba="0.1 0.1 0.1 0" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
-                        <geom name="rear wheel geom" type="mesh" mesh="wheel_torus" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
+                        <geom name="rear wheel contact" type="cylinder" size="0.35559999999999997 0.015" rgba="0.1 0.1 0.1 1" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
                     </body>
                 </body>
                 <body name="front fork" pos="0.6200000000000001 0.0 0.05" euler="0 -20.0 0">
                     <joint name="steer" type="hinge" axis="0 0 1" pos="0 0 0" range="-35 35"/>
+                    <site name="k_front_hub_left" type="sphere" size="0.01" pos="0 -0.02 0"/>
+                    <site name="k_front_hub_right" type="sphere" size="0.01" pos="0 0.02 0"/>
+                    <site name="k_front_wheel_back" type="sphere" size="0.01" pos="-0.334154695951469 0 0.12162236296660779"/>
+                    <site name="k_front_wheel_front" type="sphere" size="0.01" pos="0.334154695951469 0 -0.12162236296660779"/>
+                    <site name="k_front_wheel_ground" type="sphere" size="0.01" pos="-0.12162236296660779 0 -0.334154695951469"/>
+                    <site name="k_upper_head_tube" type="sphere" size="0.01" pos="0 0 0.6694018992255457"/>
+                    <site name="k_handlebar_left" type="sphere" size="0.01" pos="0 -0.15 0.6694018992255457"/>
+                    <site name="k_handlebar_middle" type="sphere" size="0.01" pos="0 0 0.6694018992255457"/>
+                    <site name="k_handlebar_right" type="sphere" size="0.01" pos="0 0.15 0.6694018992255457"/>
                     <geom name="head tube" type="capsule" fromto="0 0 0.5694018992255457 0 0 0.6694018992255457" size="0.016"/>
                     <geom name="handlebar" type="capsule" fromto="0 -0.15 0.6694018992255457 0 0.15 0.6694018992255457" size="0.016"/>
                     <geom name="fork left" type="capsule" fromto="0 -0.02 0 0 -0.02 0.5694018992255457" size="0.016"/>
                     <geom name="fork right" type="capsule" fromto="0 0.02 0 0 0.02 0.5694018992255457" size="0.016"/>
                     <body name="front wheel" pos="0 0 0" euler="90 0 0">
                         <joint name="front wheel hinge" type="hinge" axis="0 0 -1" pos="0 0 0" limited="false"/>
-                        <geom name="front wheel contact" type="cylinder" size="0.35559999999999997 0.015" rgba="0.1 0.1 0.1 0" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
-                        <geom name="front wheel geom" type="mesh" mesh="wheel_torus" rgba="0.1 0.1 0.1 1" contype="0" conaffinity="0"/>
+                        <geom name="front wheel contact" type="cylinder" size="0.35559999999999997 0.015" rgba="0.1 0.1 0.1 1" contype="2" conaffinity="2" friction="1.0 0.005 0.0001"/>
                     </body>
                 </body>
                 <body name="pedals" pos="0 0 0">
@@ -51,10 +63,12 @@
                     <body name="left_pedal" pos="0 -0.14400000000000002 -0.175" euler="180 0 0">
                         <joint name="left_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="left_pedal" type="box" size="0.04 0.06 0.01"/>
+                        <site name="k_left_pedal" type="sphere" size="0.01" pos="0 0 0"/>
                     </body>
                     <body name="right_pedal" pos="0 0.14400000000000002 0.175">
                         <joint name="right_pedal_hinge" type="hinge" axis="0 1 0" pos="0 0 0" limited="false"/>
                         <geom name="right_pedal" type="box" size="0.04 0.06 0.01"/>
+                        <site name="k_right_pedal" type="sphere" size="0.01" pos="0 0 0"/>
                     </body>
                 </body>
 

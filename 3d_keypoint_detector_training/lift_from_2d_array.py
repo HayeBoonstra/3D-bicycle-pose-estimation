@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 import numpy as np
 import torch
@@ -23,6 +24,68 @@ from posemamba_bicycle_io import (
     to_batch_2d,
 )
 
+# Upper bound for a single deployment measurement (~30 s at 60 Hz).
+DEFAULT_MAX_MEASUREMENT_FRAMES = int(os.environ.get("POSEMAMBA_MAX_MEASUREMENT_FRAMES", "1800"))
+
+
+def _unwrap_model(model: nn.Module) -> nn.Module:
+    return model.module if isinstance(model, nn.DataParallel) else model
+
+
+def checkpoint_train_maxlen(cfg: Any) -> int:
+    """Temporal positional-embedding length the checkpoint was trained with."""
+    return int(getattr(cfg, "clip_len", None) or getattr(cfg, "maxlen", 243))
+
+
+def checkpoint_maxlen(cfg: Any) -> int:
+    """Backward-compatible alias for training window size (not an inference cap)."""
+    return checkpoint_train_maxlen(cfg)
+
+
+def _interpolate_temporal_pos_embed(pe: torch.Tensor, target_len: int) -> torch.Tensor:
+    """Resample learned temporal positional embeddings along the time axis."""
+    if target_len <= pe.shape[1]:
+        return pe[:, :target_len, :]
+    return torch.nn.functional.interpolate(
+        pe.permute(0, 2, 1),
+        size=target_len,
+        mode="linear",
+        align_corners=True,
+    ).permute(0, 2, 1)
+
+
+@contextmanager
+def extended_temporal_context(model: Any, num_frames: int) -> Iterator[int]:
+    """Temporarily extend Temporal_pos_embed so one forward can cover num_frames."""
+    core = _unwrap_model(model)
+    original = core.Temporal_pos_embed
+    train_len = int(original.shape[1])
+    if num_frames > train_len:
+        extended = _interpolate_temporal_pos_embed(original, num_frames)
+        core.Temporal_pos_embed = nn.Parameter(
+            extended.to(device=original.device, dtype=original.dtype),
+            requires_grad=False,
+        )
+    try:
+        yield train_len
+    finally:
+        core.Temporal_pos_embed = original
+
+
+def validate_measurement_length(
+    num_frames: int,
+    *,
+    max_frames: int = DEFAULT_MAX_MEASUREMENT_FRAMES,
+    context: str = "inference",
+) -> None:
+    if num_frames <= 0:
+        raise ValueError(f"{context}: sequence length must be positive, got {num_frames}")
+    if num_frames > max_frames:
+        raise ValueError(
+            f"{context}: sequence has {num_frames} frames, above limit {max_frames}. "
+            f"Increase POSEMAMBA_MAX_MEASUREMENT_FRAMES if needed."
+        )
+
 
 def load_posemamba_lifter(
     checkpoint_path: Path,
@@ -35,7 +98,11 @@ def load_posemamba_lifter(
     maxlen_override: int | None = None,
 ) -> tuple[Any, Any, torch.device]:
     """Load PoseMamba model, config, and device from a bicycle checkpoint."""
-    ckpt_path = checkpoint_path.resolve()
+    ckpt_path = checkpoint_path.expanduser()
+    if not ckpt_path.is_absolute():
+        ckpt_path = (_REPO_ROOT / ckpt_path).resolve()
+    else:
+        ckpt_path = ckpt_path.resolve()
     if not ckpt_path.is_file():
         raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
 
@@ -91,17 +158,66 @@ def lift_2d_to_3d(
     cfg: Any,
     device: torch.device,
     motion_2d: np.ndarray,
+    *,
+    extend_temporal: bool = True,
 ) -> np.ndarray:
     """Run lifting on (T, J, C) or (N, T, J, C) normalized 2D; returns same batch rank."""
     input_2d = to_batch_2d(np.asarray(motion_2d, dtype=np.float32))
+    batch_size = int(input_2d.shape[0]) if input_2d.ndim == 4 else 1
+    num_frames = int(input_2d.shape[1]) if input_2d.ndim == 4 else int(input_2d.shape[0])
+    validate_measurement_length(num_frames, context="lift_2d_to_3d")
+
     tensor_in = torch.from_numpy(input_2d).to(device)
     run_in = tensor_in[:, :, :, :2] if getattr(cfg, "no_conf", True) else tensor_in
 
     with torch.no_grad():
-        pred = model(run_in)
+        if extend_temporal:
+            with extended_temporal_context(model, num_frames) as train_len:
+                if num_frames > train_len:
+                    print(
+                        f"[posemamba] extending temporal PE {train_len} -> {num_frames} "
+                        f"(single forward, no windowing)",
+                        flush=True,
+                    )
+                pred = model(run_in)
+        else:
+            train_len = checkpoint_train_maxlen(cfg)
+            if num_frames > train_len:
+                raise ValueError(
+                    f"lift_2d_to_3d: T={num_frames} exceeds trained PE length {train_len}. "
+                    f"Use extend_temporal=True (default) for full measurements."
+                )
+            pred = model(run_in)
         if getattr(cfg, "rootrel", True):
             pred[:, :, 0, :] = 0
     return pred.detach().cpu().numpy()
+
+
+def lift_2d_to_3d_sequence(
+    model: Any,
+    cfg: Any,
+    device: torch.device,
+    motion_2d: np.ndarray,
+    *,
+    extend_temporal: bool = True,
+) -> np.ndarray:
+    """Lift one contiguous measurement with a single model forward pass (no maxlen chunking)."""
+    seq = np.asarray(motion_2d, dtype=np.float32)
+    if seq.ndim != 3:
+        raise ValueError(f"lift_2d_to_3d_sequence expects (T, J, C), got {seq.shape}")
+    num_frames = int(seq.shape[0])
+    if num_frames == 0:
+        return np.zeros((0, seq.shape[1], 3), dtype=np.float32)
+
+    try:
+        pred = lift_2d_to_3d(model, cfg, device, seq, extend_temporal=extend_temporal)
+    except torch.cuda.OutOfMemoryError as exc:
+        raise torch.cuda.OutOfMemoryError(
+            f"GPU OOM lifting T={num_frames} in one forward pass. "
+            f"Try a shorter clip, a GPU with more memory, or POSEMAMBA_MAX_MEASUREMENT_FRAMES "
+            f"below {num_frames}."
+        ) from exc
+    return squeeze_batch(pred) if pred.ndim == 4 else pred
 
 
 def squeeze_batch(arr: np.ndarray) -> np.ndarray:

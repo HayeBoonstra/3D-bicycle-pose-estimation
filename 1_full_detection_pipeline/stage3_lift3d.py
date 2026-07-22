@@ -7,8 +7,6 @@ import argparse
 import sys
 from pathlib import Path
 
-import numpy as np
-
 PIPELINE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PIPELINE_DIR.parent
 TRAINING_DIR = REPO_ROOT / "3d_keypoint_detector_training"
@@ -17,20 +15,24 @@ for path in (REPO_ROOT, TRAINING_DIR, PIPELINE_DIR):
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
 
-from lift_from_2d_array import lift_2d_to_3d, load_posemamba_lifter, squeeze_batch
+from lift_from_2d_array import (  # noqa: E402
+    checkpoint_train_maxlen,
+    lift_2d_to_3d_sequence,
+    load_posemamba_lifter,
+)
 from pipeline_io import DEFAULT_LIFTER_CHECKPOINT
 
-from pipeline_io import (
-    CLIP_LEN,
+from pipeline_io import (  # noqa: E402
     KEYPOINTS_2D_NAME,
     KEYPOINTS_3D_NAME,
     build_normalized_2d_sequence,
     count_frames,
     load_keypoints_2d_rows,
-    require_clip_length,
     save_keypoints_3d_npz,
     should_skip_output,
+    validate_clip_length,
 )
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Stage 3: PoseMamba 3D lifting.")
@@ -57,7 +59,6 @@ def main() -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     num_frames = count_frames(frames_dir)
-    require_clip_length(num_frames)
 
     keypoints_2d_path = output_dir / KEYPOINTS_2D_NAME
     if not keypoints_2d_path.is_file():
@@ -72,26 +73,32 @@ def main() -> None:
         raise FileNotFoundError(f"Lifter checkpoint not found: {args.lifter_checkpoint}")
 
     rows = load_keypoints_2d_rows(keypoints_2d_path)
-    if len(rows) != CLIP_LEN:
-        raise RuntimeError(f"Expected {CLIP_LEN} rows in {keypoints_2d_path}, got {len(rows)}")
+    if len(rows) != num_frames:
+        raise RuntimeError(
+            f"Frame count mismatch: {num_frames} images in {frames_dir}, "
+            f"{len(rows)} rows in {keypoints_2d_path}"
+        )
 
     normalized, frame_ids, _raw = build_normalized_2d_sequence(rows)
+    validate_clip_length(normalized.shape[0], context="stage3")
 
     print("[stage3] Loading PoseMamba checkpoint...")
     model, cfg, device = load_posemamba_lifter(
         args.lifter_checkpoint,
         fallback_config=args.lifter_config,
     )
-    clip_len = int(getattr(cfg, "clip_len", getattr(cfg, "maxlen", CLIP_LEN)))
-    if normalized.shape[0] != clip_len:
-        raise ValueError(f"Normalized sequence length {normalized.shape[0]} != model clip_len {clip_len}")
+    train_len = checkpoint_train_maxlen(cfg)
 
-    print(f"[stage3] Lifting shape (1, {clip_len}, 18, 2) on {device}...")
-    pred_batch = lift_2d_to_3d(model, cfg, device, normalized)
-    pred = squeeze_batch(pred_batch)
+    print(
+        f"[stage3] Lifting full measurement ({normalized.shape[0]}, 18, 2) on {device} "
+        f"(trained PE={train_len}, single forward)..."
+    )
+    pred = lift_2d_to_3d_sequence(model, cfg, device, normalized)
 
-    if pred.shape != (clip_len, 18, 3):
-        raise RuntimeError(f"Unexpected pred shape {pred.shape}, expected ({clip_len}, 18, 3)")
+    if pred.shape != (normalized.shape[0], 18, 3):
+        raise RuntimeError(
+            f"Unexpected pred shape {pred.shape}, expected ({normalized.shape[0]}, 18, 3)"
+        )
 
     save_keypoints_3d_npz(
         output_path,
