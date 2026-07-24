@@ -165,15 +165,14 @@ def assemble_mp4(frames_dir: Path, output_mp4: Path, fps: int) -> Path | None:
         return None
 
     try:
+        return _assemble_mp4_ffmpeg(frames_dir, output_mp4, fps)
+    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
+        print(f"[vis] ffmpeg failed ({exc}); trying imageio.")
+
+    try:
         return _assemble_mp4_imageio(frames_dir, output_mp4, fps)
     except ImportError:
         pass
-
-    try:
-        return _assemble_mp4_ffmpeg(frames_dir, output_mp4, fps)
-    except (FileNotFoundError, subprocess.CalledProcessError) as exc:
-        print(f"[vis] ffmpeg failed ({exc}); frame PNGs only.")
-        return None
 
     print("[vis] Install imageio or ffmpeg to build MP4 videos.")
     return None

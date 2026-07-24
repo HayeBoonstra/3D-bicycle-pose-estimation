@@ -403,6 +403,9 @@ visibility_start = max(frame_start, sample_frame - half_window)
 visibility_end = min(frame_end, sample_frame + half_window)
 camera_mode = os.environ.get("CAMERA_MODE", "track").strip().lower()
 
+_elev_mean_deg = float(os.environ.get("CAMERA_ELEVATION_MEAN_DEG", "90"))
+_elev_std_deg = float(os.environ.get("CAMERA_ELEVATION_STD_DEG", "20"))
+
 camera_location = None
 chosen_distance = None
 chosen_elevation = None
@@ -411,7 +414,7 @@ for _ in range(max_tries):
     camera_distance = random.uniform(distance_low, distance_high)
     # generate the elevation and azimuth angles so that the camera never goes under the ground
     # gaussian distribution around the mean of 90 degrees with a standard deviation of 20 degrees
-    elevation = random.gauss(np.deg2rad(90), np.deg2rad(20))  # radians
+    elevation = random.gauss(np.deg2rad(_elev_mean_deg), np.deg2rad(_elev_std_deg))  # radians
     azimuth = random.uniform(np.deg2rad(0), np.deg2rad(360))  # radians
 
     # calculate the camera location

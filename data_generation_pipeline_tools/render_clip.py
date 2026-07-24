@@ -359,6 +359,10 @@ def render_one_clip(args: argparse.Namespace) -> None:
     if not args.quiet_mode:
         print(f"[render_clip] importing trajectory: {args.trajectory_csv}")
     _run_blender_script(ANIMATE_SCRIPT, args.quiet_mode)
+    if args.frame_start is not None:
+        scene.frame_start = int(args.frame_start)
+    if args.frame_end is not None:
+        scene.frame_end = int(args.frame_end)
     if args.fps is not None:
         scene.render.fps = args.fps
     if not args.quiet_mode:
