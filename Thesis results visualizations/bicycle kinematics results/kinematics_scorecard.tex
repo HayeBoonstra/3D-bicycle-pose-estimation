@@ -1,0 +1,34 @@
+\begin{table}[t]
+\centering
+\caption{Bicycle kinematics scorecard (pred vs GT keypoints; rates in deg/s). Circular $\delta$ and $\theta$ use wrapped position error; rates use shortest-arc frame differences per contiguous clip segment; $r$ uses unwrapped angles. Bold values exceed $2\times$ the capacity b baseline.}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{lrrrrrrrrrrrrr}
+\toprule
+Experiment & MPJPE (mm) & $\phi$ RMSE & $\phi$ bias & $\phi$ $r$ & $\delta$ RMSE & $\delta$ bias & $\delta$ $r$ & $\theta$ RMSE & $\theta$ bias & $\theta$ $r$ & $\dot\phi$ RMSE & $\dot\delta$ RMSE & $\dot\theta$ RMSE \\
+\midrule
+\multicolumn{14}{l}{\textit{Capacity}} \\
+capacity\_s & 25.00 & 1.69 & 0.03 & 0.994 & 4.37 & -0.35 & 0.748 & \textbf{13.69} & 1.43 & 0.995 & 7.84 & 28.08 & 75.69 \\
+capacity\_b & 17.57 & 1.35 & -0.13 & 0.995 & 3.03 & -0.00 & 0.805 & 5.07 & 0.19 & 0.999 & 6.21 & 15.17 & 48.60 \\
+capacity\_l & 15.48 & 1.09 & 0.26 & 0.998 & 2.30 & 0.25 & 0.915 & 3.88 & -0.42 & 1.000 & 5.27 & 12.74 & 36.31 \\
+capacity\_x & 19.34 & 1.35 & 0.01 & 0.996 & 2.55 & 0.33 & 0.901 & 5.75 & 0.09 & 0.999 & 6.04 & 9.33 & 38.97 \\
+\midrule
+\multicolumn{14}{l}{\textit{Loss}} \\
+loss\_no\_diff & 17.48 & 1.13 & 0.13 & 0.997 & 3.02 & -0.56 & 0.822 & 7.39 & 0.57 & 0.998 & 5.99 & 16.16 & 47.11 \\
+loss\_no\_nmpjpe & 17.50 & 1.25 & -0.13 & 0.997 & 2.59 & -0.17 & 0.878 & 7.77 & -0.50 & 0.999 & 5.63 & 13.54 & 49.03 \\
+loss\_no\_velocity & 17.59 & 1.40 & -0.45 & 0.996 & 3.55 & -0.61 & 0.775 & 9.77 & 1.05 & 0.996 & 11.98 & \textbf{69.53} & \textbf{116.61} \\
+\midrule
+\multicolumn{14}{l}{\textit{Augmentation}} \\
+aug\_no\_flip & 15.16 & 1.17 & -0.51 & 0.997 & 2.38 & 0.09 & 0.897 & 6.76 & 0.16 & 0.999 & 5.85 & 16.11 & 59.18 \\
+aug\_noise2d & 18.47 & 1.64 & 0.15 & 0.993 & 3.00 & -0.43 & 0.866 & 10.12 & -1.82 & 1.000 & 6.86 & 16.39 & 50.73 \\
+\midrule
+\multicolumn{14}{l}{\textit{Window}} \\
+window\_t27 & 14.68 & 1.13 & -0.08 & 0.998 & 1.73 & -0.43 & 0.969 & 8.31 & -0.48 & 0.998 & 6.78 & 14.80 & \textbf{152.43} \\
+window\_t81 & 14.32 & 1.22 & -0.03 & 0.994 & 2.15 & -0.00 & 0.943 & 3.27 & 0.40 & 0.996 & 8.31 & 19.51 & 49.44 \\
+window\_t121 & 15.53 & 1.34 & 0.18 & 0.997 & 1.87 & -0.18 & 0.950 & 3.82 & 0.53 & 0.989 & 5.78 & 12.05 & 28.19 \\
+window\_t162 & 18.89 & 1.63 & -0.28 & 0.994 & 2.52 & 0.03 & 0.902 & 4.17 & -1.60 & 1.000 & 7.11 & 14.14 & 29.76 \\
+\midrule
+\multicolumn{14}{l}{\textit{Dynamics}} \\
+dyn\_roll & 20.64 & 1.07 & 0.09 & 0.998 & 4.08 & -0.31 & 0.736 & 8.74 & -1.44 & 0.996 & 6.21 & 22.70 & 94.03 \\
+\bottomrule
+\end{tabular}}
+\end{table}

@@ -201,6 +201,9 @@ def render_greenlight_videos(
     out_3d_dynamics_mp4: Path,
     fps: int | None = None,
     out_width: int = 1280,
+    out_3d_mp4: Path | None = None,
+    include_dynamics_panel: bool = True,
+    show_titles: bool = True,
 ) -> dict[str, Any]:
     play_fps = _clip_fps(raw_clip_dir, fps)
     keypoints_2d = _rows_by_frame_id(pipeline_dir / KEYPOINTS_2D_NAME)
@@ -224,6 +227,7 @@ def render_greenlight_videos(
 
     frames_2d: list[np.ndarray] = []
     frames_3d_dyn: list[np.ndarray] = []
+    frames_3d: list[np.ndarray] = []
 
     for t_idx in tqdm(range(len(pred)), desc="greenlight videos"):
         fid = int(frame_ids[t_idx])
@@ -243,23 +247,35 @@ def render_greenlight_videos(
             elev=20.0,
             azim=-70.0,
             invert_z=True,
-            title="3D keypoints (pred vs gt)",
+            title="3D keypoints (pred vs gt)" if show_titles else None,
             metrics_text=None,
+            show_titles=show_titles,
         )
-        row_dyn = _render_dynamics_panel(signals, frame_idx=t_idx, width_px=out_width)
-        frames_3d_dyn.append(_stack_vertical([row_3d, row_dyn], width=out_width))
+        row_3d_fit = _fit_width(row_3d, out_width)
+        frames_3d.append(row_3d_fit)
+        if include_dynamics_panel:
+            row_dyn = _render_dynamics_panel(signals, frame_idx=t_idx, width_px=out_width)
+            frames_3d_dyn.append(_stack_vertical([row_3d_fit, row_dyn], width=out_width))
+        else:
+            frames_3d_dyn.append(row_3d_fit)
 
     out_2d_mp4.parent.mkdir(parents=True, exist_ok=True)
     out_3d_dynamics_mp4.parent.mkdir(parents=True, exist_ok=True)
     _write_fixed_size_video(out_2d_mp4, frames_2d, fps=play_fps)
     _write_fixed_size_video(out_3d_dynamics_mp4, frames_3d_dyn, fps=play_fps)
+    if out_3d_mp4 is not None:
+        out_3d_mp4.parent.mkdir(parents=True, exist_ok=True)
+        _write_fixed_size_video(out_3d_mp4, frames_3d, fps=play_fps)
 
     return {
         "video_2d": str(out_2d_mp4),
         "video_3d_dynamics": str(out_3d_dynamics_mp4),
+        "video_3d": str(out_3d_mp4) if out_3d_mp4 is not None else None,
         "num_frames": int(len(pred)),
         "fps": play_fps,
         "out_width_px": out_width,
+        "include_dynamics_panel": include_dynamics_panel,
+        "show_titles": show_titles,
         "raw_clip": str(raw_clip_dir),
         "pipeline_dir": str(pipeline_dir),
     }
@@ -299,6 +315,22 @@ def parse_args() -> argparse.Namespace:
         default=1280,
         help="Output width in pixels.",
     )
+    p.add_argument(
+        "--out-3d-mp4",
+        type=Path,
+        default=None,
+        help="Optional 3D overlay-only MP4 (same frames as the top panel).",
+    )
+    p.add_argument(
+        "--no-dynamics-panel",
+        action="store_true",
+        help="Omit roll/steer/crank plots from --out-3d-dynamics-mp4.",
+    )
+    p.add_argument(
+        "--no-titles",
+        action="store_true",
+        help="Hide figure titles and axis labels on 3D panels.",
+    )
     return p.parse_args()
 
 
@@ -313,6 +345,9 @@ def main() -> None:
         out_3d_dynamics_mp4=args.out_3d_dynamics_mp4.resolve(),
         fps=args.fps if args.fps > 0 else None,
         out_width=args.out_width,
+        out_3d_mp4=args.out_3d_mp4.resolve() if args.out_3d_mp4 is not None else None,
+        include_dynamics_panel=not args.no_dynamics_panel,
+        show_titles=not args.no_titles,
     )
     manifest_path = args.out_2d_mp4.resolve().parent.parent / "manifest.json"
     existing: dict[str, Any] = {}
@@ -322,6 +357,8 @@ def main() -> None:
     manifest_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
     print(f"[make_full_pipeline_dynamics_video] wrote {args.out_2d_mp4}")
     print(f"[make_full_pipeline_dynamics_video] wrote {args.out_3d_dynamics_mp4} ({meta['num_frames']} frames)")
+    if args.out_3d_mp4 is not None:
+        print(f"[make_full_pipeline_dynamics_video] wrote {args.out_3d_mp4}")
 
 
 if __name__ == "__main__":

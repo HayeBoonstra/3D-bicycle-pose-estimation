@@ -10,11 +10,13 @@ import numpy as np
 
 from evaluation.common import (
     DEFAULT_MAX_CLIP_MPJPE_MM,
+    DEFAULT_SEQUENCE_FPS,
     first_clip_mask,
     frame_mask_for_clips,
     longest_contiguous_slice,
     pearson_r,
     r_squared,
+    unique_clip_ids_ordered,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -65,6 +67,425 @@ def _velocity_mae(pred_rad: np.ndarray, gt_rad: np.ndarray) -> float:
     vp = np.diff(pred_rad)
     vg = np.diff(gt_rad)
     return float(np.mean(np.abs(np.rad2deg(vp - vg))))
+
+
+def _circular_diff_deg(pred_deg: np.ndarray, gt_deg: np.ndarray) -> np.ndarray:
+    return np.rad2deg(_wrap_pi(np.deg2rad(np.asarray(pred_deg, dtype=np.float64) - gt_deg)))
+
+
+def _signed_bias_deg(pred_deg: np.ndarray, gt_deg: np.ndarray, *, circular: bool) -> float:
+    if circular:
+        return float(np.mean(_circular_diff_deg(pred_deg, gt_deg)))
+    diff = np.asarray(pred_deg, dtype=np.float64) - np.asarray(gt_deg, dtype=np.float64)
+    return float(np.mean(diff))
+
+
+def _abs_error_deg(pred_deg: np.ndarray, gt_deg: np.ndarray, *, circular: bool) -> np.ndarray:
+    if circular:
+        return np.abs(_circular_diff_deg(pred_deg, gt_deg))
+    return np.abs(np.asarray(pred_deg, dtype=np.float64) - np.asarray(gt_deg, dtype=np.float64))
+
+
+def _angular_velocity_deg_per_s(
+    angle_deg: np.ndarray,
+    *,
+    fps: float = DEFAULT_SEQUENCE_FPS,
+    circular: bool = False,
+) -> np.ndarray:
+    """Frame-to-frame angular rate; circular angles use shortest arc per step."""
+    rad = np.deg2rad(np.asarray(angle_deg, dtype=np.float64))
+    if rad.size <= 1:
+        return np.array([], dtype=np.float64)
+    delta = rad[1:] - rad[:-1]
+    if circular:
+        delta = np.asarray(_wrap_pi(delta), dtype=np.float64)
+    return np.rad2deg(delta) * fps
+
+
+def _velocity_rmse_deg_per_s(
+    pred_rad: np.ndarray,
+    gt_rad: np.ndarray,
+    *,
+    fps: float = DEFAULT_SEQUENCE_FPS,
+    circular: bool = False,
+) -> float:
+    if pred_rad.size <= 1:
+        return 0.0
+    pred_deg = np.rad2deg(pred_rad)
+    gt_deg = np.rad2deg(gt_rad)
+    vp = _angular_velocity_deg_per_s(pred_deg, fps=fps, circular=circular)
+    vg = _angular_velocity_deg_per_s(gt_deg, fps=fps, circular=circular)
+    if vp.size == 0:
+        return 0.0
+    err = vp - vg
+    return float(np.sqrt(np.mean(err**2)))
+
+
+def _unwrap_deg(angle_deg: np.ndarray) -> np.ndarray:
+    return np.rad2deg(np.unwrap(np.deg2rad(np.asarray(angle_deg, dtype=np.float64))))
+
+
+def _iter_contiguous_keypoint_segments(
+    preds_npz_path: str | Path,
+    *,
+    accepted_clip_ids: set[str] | None = None,
+    max_clip_mpjpe_mm: float = DEFAULT_MAX_CLIP_MPJPE_MM,
+):
+    """Yield (pred, gt) keypoint arrays for each contiguous clip segment."""
+    data = np.load(preds_npz_path, allow_pickle=True)
+    pred_full = np.asarray(data["pred"], dtype=np.float32)
+    gt_full = np.asarray(data["gt"], dtype=np.float32)
+    clip_ids = data.get("clip_ids")
+    frame_idx_all = (
+        np.asarray(data["frame_idx"], dtype=np.int32) if data.get("frame_idx") is not None else None
+    )
+
+    if accepted_clip_ids is None and clip_ids is not None:
+        from evaluation.metrics.pose3d import compute_pose3d_metrics
+
+        pose3d = compute_pose3d_metrics(preds_npz_path, max_clip_mpjpe_mm=max_clip_mpjpe_mm)
+        accepted_clip_ids = set(pose3d.get("clip_filter", {}).get("accepted_clip_ids", []))
+
+    if clip_ids is None:
+        yield pred_full, gt_full
+        return
+
+    accepted = {str(c) for c in (accepted_clip_ids or [])}
+    for cid in unique_clip_ids_ordered(clip_ids):
+        if accepted and cid not in accepted:
+            continue
+        mask = np.array([str(c) == cid for c in clip_ids])
+        pred_seg = pred_full[mask]
+        gt_seg = gt_full[mask]
+        if frame_idx_all is not None:
+            frame_idx = frame_idx_all[mask]
+            seg = longest_contiguous_slice(frame_idx)
+            pred_seg = pred_seg[seg]
+            gt_seg = gt_seg[seg]
+        if pred_seg.size:
+            yield pred_seg, gt_seg
+
+
+def _pearson_r_from_angle_segments(
+    segments: list[tuple[np.ndarray, np.ndarray]],
+    *,
+    angle: str,
+    circular: bool,
+) -> float:
+    pred_parts: list[np.ndarray] = []
+    gt_parts: list[np.ndarray] = []
+    for pred_kpt, gt_kpt in segments:
+        pred_deg, gt_deg, _ = _angle_arrays_from_keypoints(pred_kpt, gt_kpt)[angle]
+        if circular:
+            pred_parts.append(_unwrap_deg(pred_deg))
+            gt_parts.append(_unwrap_deg(gt_deg))
+        else:
+            pred_parts.append(np.asarray(pred_deg, dtype=np.float64))
+            gt_parts.append(np.asarray(gt_deg, dtype=np.float64))
+    if not pred_parts:
+        return float("nan")
+    return pearson_r(np.concatenate(pred_parts), np.concatenate(gt_parts))
+
+
+def _rate_rmse_from_angle_segments(
+    segments: list[tuple[np.ndarray, np.ndarray]],
+    *,
+    angle: str,
+    fps: float,
+    circular: bool,
+) -> float:
+    vp_parts: list[np.ndarray] = []
+    vg_parts: list[np.ndarray] = []
+    for pred_kpt, gt_kpt in segments:
+        pred_deg, gt_deg, is_circ = _angle_arrays_from_keypoints(pred_kpt, gt_kpt)[angle]
+        use_circular = circular or is_circ
+        vp = _angular_velocity_deg_per_s(pred_deg, fps=fps, circular=use_circular)
+        vg = _angular_velocity_deg_per_s(gt_deg, fps=fps, circular=use_circular)
+        if vp.size:
+            vp_parts.append(vp)
+            vg_parts.append(vg)
+    if not vp_parts:
+        return 0.0
+    vp_all = np.concatenate(vp_parts)
+    vg_all = np.concatenate(vg_parts)
+    return float(np.sqrt(np.mean((vp_all - vg_all) ** 2)))
+
+
+def _angle_arrays_from_keypoints(
+    pred: np.ndarray,
+    gt: np.ndarray,
+) -> dict[str, np.ndarray]:
+    return {
+        "roll": (
+            np.rad2deg(bicycle_roll_angle(pred)),
+            np.rad2deg(bicycle_roll_angle(gt)),
+            False,
+        ),
+        "steer": (
+            np.rad2deg(bicycle_steer_angle(pred)),
+            np.rad2deg(bicycle_steer_angle(gt)),
+            True,
+        ),
+        "crank": (
+            np.rad2deg(bicycle_crank_angle(pred)),
+            np.rad2deg(bicycle_crank_angle(gt)),
+            True,
+        ),
+    }
+
+
+def _angle_stats(pred_deg: np.ndarray, gt_deg: np.ndarray, *, circular: bool) -> dict[str, float]:
+    if circular:
+        rmse_mae = _circular_rmse_mae(pred_deg, gt_deg)
+    else:
+        rmse_mae = _rmse_mae(pred_deg, gt_deg)
+    out = {
+        **rmse_mae,
+        "bias_deg": _signed_bias_deg(pred_deg, gt_deg, circular=circular),
+        "pearson_r": pearson_r(pred_deg, gt_deg),
+    }
+    if circular:
+        out["r2"] = r_squared(pred_deg, gt_deg)
+    return out
+
+
+def _load_npz_angles(
+    preds_npz_path: str | Path,
+    *,
+    accepted_clip_ids: set[str] | None = None,
+    max_clip_mpjpe_mm: float = DEFAULT_MAX_CLIP_MPJPE_MM,
+) -> tuple[dict[str, tuple[np.ndarray, np.ndarray, bool]], np.ndarray | None, set[str]]:
+    data = np.load(preds_npz_path, allow_pickle=True)
+    pred_full = np.asarray(data["pred"], dtype=np.float32)
+    gt_full = np.asarray(data["gt"], dtype=np.float32)
+    clip_ids = data.get("clip_ids")
+
+    if accepted_clip_ids is None and clip_ids is not None:
+        from evaluation.metrics.pose3d import compute_pose3d_metrics
+
+        pose3d = compute_pose3d_metrics(preds_npz_path, max_clip_mpjpe_mm=max_clip_mpjpe_mm)
+        accepted_clip_ids = set(pose3d.get("clip_filter", {}).get("accepted_clip_ids", []))
+
+    if clip_ids is not None and accepted_clip_ids:
+        frame_mask = frame_mask_for_clips(clip_ids, accepted_clip_ids)
+        pred = pred_full[frame_mask]
+        gt = gt_full[frame_mask]
+        clip_ids_filtered = np.asarray(clip_ids)[frame_mask]
+    else:
+        pred = pred_full
+        gt = gt_full
+        clip_ids_filtered = np.asarray(clip_ids) if clip_ids is not None else None
+        accepted_clip_ids = accepted_clip_ids or set()
+
+    angles = _angle_arrays_from_keypoints(pred, gt)
+    return angles, clip_ids_filtered, accepted_clip_ids
+
+
+def compute_kinematics_scorecard_metrics(
+    preds_npz_path: str | Path,
+    *,
+    accepted_clip_ids: set[str] | None = None,
+    max_clip_mpjpe_mm: float = DEFAULT_MAX_CLIP_MPJPE_MM,
+    fps: float = DEFAULT_SEQUENCE_FPS,
+) -> dict[str, float]:
+    """Aggregate kinematics metrics for thesis scorecard rows (pred vs GT keypoints)."""
+    segments = list(
+        _iter_contiguous_keypoint_segments(
+            preds_npz_path,
+            accepted_clip_ids=accepted_clip_ids,
+            max_clip_mpjpe_mm=max_clip_mpjpe_mm,
+        )
+    )
+    angles, _, _ = _load_npz_angles(
+        preds_npz_path,
+        accepted_clip_ids=accepted_clip_ids,
+        max_clip_mpjpe_mm=max_clip_mpjpe_mm,
+    )
+    out: dict[str, float] = {}
+    for name, (pred_deg, gt_deg, circular) in angles.items():
+        stats = _angle_stats(pred_deg, gt_deg, circular=circular)
+        out[f"{name}_rmse_deg"] = stats["rmse_deg"]
+        out[f"{name}_bias_deg"] = stats["bias_deg"]
+        out[f"{name}_pearson_r"] = _pearson_r_from_angle_segments(
+            segments, angle=name, circular=circular
+        )
+        out[f"{name}_rate_rmse_deg_per_s"] = _rate_rmse_from_angle_segments(
+            segments, angle=name, fps=fps, circular=circular
+        )
+    return out
+
+
+def framewise_abs_error_curves(
+    preds_npz_path: str | Path,
+    *,
+    angle: str = "roll",
+    accepted_clip_ids: set[str] | None = None,
+    max_clip_mpjpe_mm: float = DEFAULT_MAX_CLIP_MPJPE_MM,
+    n_grid: int = 100,
+) -> dict[str, Any]:
+    """Per-clip abs-error curves on normalized time [0,1]; returns mean/std for plotting."""
+    data = np.load(preds_npz_path, allow_pickle=True)
+    pred_full = np.asarray(data["pred"], dtype=np.float32)
+    gt_full = np.asarray(data["gt"], dtype=np.float32)
+    clip_ids = data.get("clip_ids")
+    frame_idx_all = (
+        np.asarray(data["frame_idx"], dtype=np.int32) if data.get("frame_idx") is not None else None
+    )
+
+    if accepted_clip_ids is None and clip_ids is not None:
+        from evaluation.metrics.pose3d import compute_pose3d_metrics
+
+        pose3d = compute_pose3d_metrics(preds_npz_path, max_clip_mpjpe_mm=max_clip_mpjpe_mm)
+        accepted_clip_ids = set(pose3d.get("clip_filter", {}).get("accepted_clip_ids", []))
+
+    if clip_ids is None:
+        raise ValueError(f"{preds_npz_path} has no clip_ids")
+
+    accepted = {str(c) for c in (accepted_clip_ids or [])}
+    grid = np.linspace(0.0, 1.0, n_grid, dtype=np.float64)
+    curves: list[np.ndarray] = []
+
+    for cid in unique_clip_ids_ordered(clip_ids):
+        if accepted and cid not in accepted:
+            continue
+        mask = np.array([str(c) == cid for c in clip_ids])
+        pred_viz = pred_full[mask]
+        gt_viz = gt_full[mask]
+        frame_idx_viz = frame_idx_all[mask] if frame_idx_all is not None else None
+
+        if frame_idx_viz is not None:
+            seg = longest_contiguous_slice(frame_idx_viz)
+            pred_viz = pred_viz[seg]
+            gt_viz = gt_viz[seg]
+
+        if pred_viz.size == 0:
+            continue
+
+        angles = _angle_arrays_from_keypoints(pred_viz, gt_viz)
+        if angle not in angles:
+            raise ValueError(f"unknown angle: {angle}")
+        pred_deg, gt_deg, circular = angles[angle]
+        err = _abs_error_deg(pred_deg, gt_deg, circular=circular)
+        if err.size < 2:
+            t_src = np.array([0.0, 1.0], dtype=np.float64)
+            err_src = np.array([float(err[0]), float(err[0])], dtype=np.float64)
+        else:
+            t_src = np.linspace(0.0, 1.0, err.size, dtype=np.float64)
+            err_src = err.astype(np.float64)
+        curves.append(np.interp(grid, t_src, err_src))
+
+    if not curves:
+        return {"grid": grid.tolist(), "curves": [], "mean": [], "std": []}
+
+    arr = np.stack(curves, axis=0)
+    return {
+        "grid": grid.tolist(),
+        "curves": arr,
+        "mean": arr.mean(axis=0),
+        "std": arr.std(axis=0),
+    }
+
+
+def mean_coherence_across_clips(
+    preds_npz_path: str | Path,
+    *,
+    angle: str = "roll",
+    accepted_clip_ids: set[str] | None = None,
+    max_clip_mpjpe_mm: float = DEFAULT_MAX_CLIP_MPJPE_MM,
+    fps: float = DEFAULT_SEQUENCE_FPS,
+    nperseg: int = 256,
+) -> dict[str, Any]:
+    """Mean magnitude-squared coherence C_xy(f) across accepted clips."""
+    from scipy.signal import coherence
+
+    data = np.load(preds_npz_path, allow_pickle=True)
+    pred_full = np.asarray(data["pred"], dtype=np.float32)
+    gt_full = np.asarray(data["gt"], dtype=np.float32)
+    clip_ids = data.get("clip_ids")
+    frame_idx_all = (
+        np.asarray(data["frame_idx"], dtype=np.int32) if data.get("frame_idx") is not None else None
+    )
+
+    if accepted_clip_ids is None and clip_ids is not None:
+        from evaluation.metrics.pose3d import compute_pose3d_metrics
+
+        pose3d = compute_pose3d_metrics(preds_npz_path, max_clip_mpjpe_mm=max_clip_mpjpe_mm)
+        accepted_clip_ids = set(pose3d.get("clip_filter", {}).get("accepted_clip_ids", []))
+
+    if clip_ids is None:
+        raise ValueError(f"{preds_npz_path} has no clip_ids")
+
+    accepted = {str(c) for c in (accepted_clip_ids or [])}
+    freq_ref: np.ndarray | None = None
+    coh_list: list[np.ndarray] = []
+
+    for cid in unique_clip_ids_ordered(clip_ids):
+        if accepted and cid not in accepted:
+            continue
+        mask = np.array([str(c) == cid for c in clip_ids])
+        pred_viz = pred_full[mask]
+        gt_viz = gt_full[mask]
+        frame_idx_viz = frame_idx_all[mask] if frame_idx_all is not None else None
+
+        if frame_idx_viz is not None:
+            seg = longest_contiguous_slice(frame_idx_viz)
+            pred_viz = pred_viz[seg]
+            gt_viz = gt_viz[seg]
+
+        if pred_viz.size < 8:
+            continue
+
+        angles = _angle_arrays_from_keypoints(pred_viz, gt_viz)
+        if angle not in angles:
+            raise ValueError(f"unknown angle: {angle}")
+        pred_deg, gt_deg, _ = angles[angle]
+        seg_len = min(len(pred_deg), nperseg)
+        if seg_len < 8:
+            continue
+        f, cxy = coherence(
+            pred_deg.astype(np.float64),
+            gt_deg.astype(np.float64),
+            fs=fps,
+            nperseg=seg_len,
+        )
+        if freq_ref is None:
+            freq_ref = f
+            coh_list.append(cxy)
+        elif len(f) == len(freq_ref) and np.allclose(f, freq_ref):
+            coh_list.append(cxy)
+        else:
+            coh_interp = np.interp(freq_ref, f, cxy, left=0.0, right=0.0)
+            coh_list.append(coh_interp)
+
+    if not coh_list or freq_ref is None:
+        return {"freq_hz": [], "mean": [], "std": []}
+
+    arr = np.stack(coh_list, axis=0)
+    return {
+        "freq_hz": freq_ref.tolist(),
+        "mean": arr.mean(axis=0),
+        "std": arr.std(axis=0),
+    }
+
+
+def pooled_bland_altman_arrays(
+    preds_npz_path: str | Path,
+    *,
+    angle: str = "roll",
+    accepted_clip_ids: set[str] | None = None,
+    max_clip_mpjpe_mm: float = DEFAULT_MAX_CLIP_MPJPE_MM,
+) -> dict[str, np.ndarray]:
+    """Pooled pred/GT/diff arrays for Bland-Altman (all accepted frames)."""
+    angles, _, _ = _load_npz_angles(
+        preds_npz_path,
+        accepted_clip_ids=accepted_clip_ids,
+        max_clip_mpjpe_mm=max_clip_mpjpe_mm,
+    )
+    if angle not in angles:
+        raise ValueError(f"unknown angle: {angle}")
+    pred_deg, gt_deg, circular = angles[angle]
+    diff = _circular_diff_deg(pred_deg, gt_deg) if circular else (pred_deg - gt_deg)
+    return {"x": gt_deg.astype(np.float64), "diff": diff.astype(np.float64)}
 
 
 def _build_time_series_payload(
@@ -216,9 +637,14 @@ def compute_dynamics_metrics(
     gt_crank_kpt = np.rad2deg(bicycle_crank_angle(gt))
 
     steer_keypoint = _circular_rmse_mae(pred_steer, gt_steer_kpt)
+    steer_keypoint["bias_deg"] = _signed_bias_deg(pred_steer, gt_steer_kpt, circular=True)
+    steer_keypoint["pearson_r"] = pearson_r(pred_steer, gt_steer_kpt)
     steer_hub_keypoint = _circular_rmse_mae(pred_steer_hub, gt_steer_hub)
     roll_keypoint = _rmse_mae(pred_roll, gt_roll_kpt)
+    roll_keypoint["bias_deg"] = _signed_bias_deg(pred_roll, gt_roll_kpt, circular=False)
+    roll_keypoint["pearson_r"] = pearson_r(pred_roll, gt_roll_kpt)
     crank_keypoint = _circular_rmse_mae(pred_crank, gt_crank_kpt)
+    crank_keypoint["bias_deg"] = _signed_bias_deg(pred_crank, gt_crank_kpt, circular=True)
     crank_keypoint["pearson_r"] = pearson_r(pred_crank, gt_crank_kpt)
     crank_keypoint["r2"] = r_squared(pred_crank, gt_crank_kpt)
 
@@ -360,6 +786,15 @@ def compute_dynamics_metrics(
         ),
         "crank_velocity_mae_deg_per_frame": _velocity_mae(
             np.deg2rad(pred_crank), np.deg2rad(gt_crank_kpt)
+        ),
+        "steer_velocity_rmse_deg_per_s": _velocity_rmse_deg_per_s(
+            np.deg2rad(pred_steer), np.deg2rad(gt_steer_kpt), circular=True
+        ),
+        "roll_velocity_rmse_deg_per_s": _velocity_rmse_deg_per_s(
+            np.deg2rad(pred_roll), np.deg2rad(gt_roll_kpt)
+        ),
+        "crank_velocity_rmse_deg_per_s": _velocity_rmse_deg_per_s(
+            np.deg2rad(pred_crank), np.deg2rad(gt_crank_kpt), circular=True
         ),
         "mujoco_gt": mujoco_metrics,
         "steer_hub_only": steer_hub_diagnostic,

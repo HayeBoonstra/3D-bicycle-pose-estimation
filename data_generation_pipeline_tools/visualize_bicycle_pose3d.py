@@ -346,10 +346,18 @@ def write_dynamics_angle_plots(
     return paths
 
 
-def _style_axes(ax: plt.Axes) -> None:
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
+def _style_axes(ax: plt.Axes, *, show_labels: bool = True) -> None:
+    if show_labels:
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+    else:
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.set_zlabel("")
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_zticklabels([])
     ax.xaxis.pane.fill = False  # type: ignore[attr-defined]
     ax.yaxis.pane.fill = False  # type: ignore[attr-defined]
     ax.zaxis.pane.fill = False  # type: ignore[attr-defined]
@@ -364,6 +372,7 @@ def _finalize_3d_axes(
     azim: float,
     invert_z: bool,
     equal_aspect: bool = False,
+    show_labels: bool = True,
 ) -> None:
     ax.set_xlim(lo[0], hi[0])
     ax.set_ylim(lo[1], hi[1])
@@ -377,7 +386,7 @@ def _finalize_3d_axes(
     ax.view_init(elev=elev, azim=azim)
     # if invert_z:
     #     ax.invert_zaxis()
-    _style_axes(ax)
+    _style_axes(ax, show_labels=show_labels)
 
 
 def draw_skeleton(
@@ -430,6 +439,7 @@ def render_frame(
     equal_aspect: bool = False,
     title: str | None = None,
     metrics_text: list[str] | None = None,
+    show_titles: bool = True,
 ) -> np.ndarray:
     """Return an RGB uint8 image for one time step."""
 
@@ -448,8 +458,18 @@ def render_frame(
                 draw_skeleton_grouped(ax, pose, part_colors=PART_COLORS_PRED, linewidth=2.4)
             else:
                 draw_skeleton(ax, pose, edgecolor=ec, pointcolor=ec)
-            ax.set_title(panel_title, fontsize=12)
-            _finalize_3d_axes(ax, lo, hi, elev=elev, azim=azim, invert_z=invert_z, equal_aspect=equal_aspect)
+            if show_titles:
+                ax.set_title(panel_title, fontsize=12)
+            _finalize_3d_axes(
+                ax,
+                lo,
+                hi,
+                elev=elev,
+                azim=azim,
+                invert_z=invert_z,
+                equal_aspect=equal_aspect,
+                show_labels=show_titles,
+            )
     else:
         fig = plt.figure(figsize=(7.2, 6.4), dpi=120)
         ax = fig.add_subplot(1, 1, 1, projection="3d")
@@ -458,12 +478,22 @@ def render_frame(
                 ax, gt, part_colors=PART_COLORS_GT, linewidth=1.8, linestyle="--"
             )
         draw_skeleton_grouped(ax, pred, part_colors=PART_COLORS_PRED, linewidth=2.4)
-        ax.set_title("Prediction vs ground truth" if gt is not None else "Prediction", fontsize=12)
-        _finalize_3d_axes(ax, lo, hi, elev=elev, azim=azim, invert_z=invert_z, equal_aspect=equal_aspect)
+        if show_titles:
+            ax.set_title("Prediction vs ground truth" if gt is not None else "Prediction", fontsize=12)
+        _finalize_3d_axes(
+            ax,
+            lo,
+            hi,
+            elev=elev,
+            azim=azim,
+            invert_z=invert_z,
+            equal_aspect=equal_aspect,
+            show_labels=show_titles,
+        )
 
-    if title:
+    if show_titles and title:
         fig.suptitle(title, fontsize=11, y=0.98)
-    if metrics_text:
+    if show_titles and metrics_text:
         fig.text(
             0.01,
             0.02,

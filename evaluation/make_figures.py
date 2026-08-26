@@ -46,8 +46,6 @@ def plot_per_joint_mpjpe(metrics: dict[str, Any], out_path: Path) -> None:
     ax.set_xticks(range(len(joints)))
     ax.set_xticklabels([j.replace("k_", "") for j in joints], rotation=45, ha="right")
     ax.set_ylabel("MPJPE (mm)")
-    ax.axhline(40, color="red", linestyle="--", label="40 mm target")
-    ax.legend()
     ax.set_title("Per-joint MPJPE")
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
@@ -233,13 +231,12 @@ def plot_capacity_detected_vs_gt_training(summary_rows: list[dict], out_path: Pa
     x = np.arange(len(labels))
     width = 0.35
     fig, ax = plt.subplots(figsize=(7, 4))
-    ax.bar(x - width / 2, detected_vals, width, label="Detected-2D train", color="steelblue")
-    ax.bar(x + width / 2, gt_vals, width, label="GT-2D train", color="darkorange")
+    ax.bar(x - width / 2, detected_vals, width, label="pred", color="steelblue")
+    ax.bar(x + width / 2, gt_vals, width, label="gt", color="darkorange")
     ax.set_xticks(x)
     ax.set_xticklabels(labels)
     ax.set_ylabel("MPJPE (mm)")
-    ax.set_title("Capacity: detected vs GT training (matching test corpora)")
-    ax.axhline(40, color="red", linestyle="--", alpha=0.5, label="40 mm target")
+    ax.set_title("detected versus ground truth input across capacities")
     ax.legend()
     ax.grid(True, alpha=0.3, axis="y")
     fig.tight_layout()
@@ -556,29 +553,22 @@ def plot_dynamics_timeseries(metrics: dict[str, Any], out_path: Path, max_frames
     if frame_idx:
         t = np.asarray(frame_idx[:n], dtype=np.int64)
         t = t - int(t[0])
-        xlabel = "Frame (contiguous segment)"
     else:
         t = np.arange(n)
-        xlabel = "Frame"
-    clip_label = ts.get("clip_id")
-    clip_suffix = f" ({clip_label})" if clip_label else ""
-
+    xlabel = "Frame (n)"
     fig, axes = plt.subplots(3, 1, figsize=(10, 8.5), sharex=True)
 
     axes[0].plot(t, ts["pred_steer_deg"][:n], label="pred", alpha=0.8)
-    axes[0].plot(t, ts["gt_steer_deg"][:n], label="gt MuJoCo", alpha=0.8)
+    axes[0].plot(t, ts["gt_steer_deg"][:n], label="gt", alpha=0.8)
     axes[0].set_ylabel("Steer (deg)")
-    axes[0].set_title(f"Steer vs MuJoCo GT{clip_suffix}")
+    axes[0].set_title("Steer")
     axes[0].legend()
     axes[0].grid(True, alpha=0.3)
 
     axes[1].plot(t, ts["pred_roll_deg"][:n], label="pred", alpha=0.8)
-    axes[1].plot(t, ts["gt_roll_deg"][:n], label="gt kinematic", alpha=0.8)
-    mujoco_roll = ts.get("gt_roll_mujoco_deg")
-    if mujoco_roll:
-        axes[1].plot(t, mujoco_roll[:n], label="gt MuJoCo", alpha=0.55, linestyle="--")
+    axes[1].plot(t, ts["gt_roll_deg"][:n], label="gt", alpha=0.8)
     axes[1].set_ylabel("Roll (deg)")
-    axes[1].set_title(f"Roll (kinematic pred vs kinematic GT){clip_suffix}")
+    axes[1].set_title("Roll")
     axes[1].legend()
     axes[1].grid(True, alpha=0.3)
 
@@ -587,23 +577,9 @@ def plot_dynamics_timeseries(metrics: dict[str, Any], out_path: Path, max_frames
     if pred_crank and gt_crank:
         pred_crank_arr = np.asarray(pred_crank[:n], dtype=np.float64)
         gt_crank_arr = np.asarray(gt_crank[:n], dtype=np.float64)
-        axes[2].plot(t, gt_crank_arr, label="gt kinematic", color="black", linestyle="--", alpha=0.85)
+        axes[2].plot(t, gt_crank_arr, label="gt", color="black", linestyle="--", alpha=0.85)
         axes[2].plot(t, pred_crank_arr, label="pred", color="#9467bd", alpha=0.9)
-        crank_stats = metrics.get("dynamics", {}).get("crank", {})
-        rmse = crank_stats.get("rmse_deg")
-        mae = crank_stats.get("mae_deg")
-        pearson = crank_stats.get("pearson_r")
-        stats_bits = []
-        if rmse is not None:
-            stats_bits.append(f"RMSE {float(rmse):.2f}°")
-        if mae is not None:
-            stats_bits.append(f"MAE {float(mae):.2f}°")
-        if pearson is not None:
-            stats_bits.append(f"r={float(pearson):.2f}")
-        stats_suffix = f" ({', '.join(stats_bits)})" if stats_bits else ""
-        axes[2].set_title(f"Crank angle{stats_suffix}{clip_suffix}")
-    else:
-        axes[2].set_title(f"Crank angle{clip_suffix}")
+    axes[2].set_title("Crank angle")
     axes[2].set_ylabel("Crank (deg)")
     axes[2].set_xlabel(xlabel)
     axes[2].legend()

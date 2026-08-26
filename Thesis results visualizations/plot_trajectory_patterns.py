@@ -18,6 +18,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.gridspec import GridSpec
 from matplotlib.lines import Line2D
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -146,21 +147,91 @@ def generate_composite_profile(
     return resample_to_display(yaw, speed, physics_hz, display_hz)
 
 
-def _style_axes(ax):
+def _style_axes(
+    ax,
+    *,
+    labelsize: int = 9,
+    show_xlabel: bool = True,
+    show_ylabel: bool = True,
+):
     ax.set_aspect("equal", adjustable="box")
     ax.axhline(0.0, color="#cccccc", linewidth=0.6, zorder=0)
     ax.axvline(0.0, color="#cccccc", linewidth=0.6, zorder=0)
-    ax.tick_params(labelsize=8)
-    ax.set_xlabel("Lateral displacement (m)", fontsize=8)
-    ax.set_ylabel("Forward displacement (m)", fontsize=8)
+    ax.tick_params(labelsize=labelsize)
+    if show_xlabel:
+        ax.set_xlabel("y (m)", fontsize=labelsize)
+    else:
+        ax.set_xlabel("")
+        ax.tick_params(labelbottom=False)
+    if show_ylabel:
+        ax.set_ylabel("x (m)", fontsize=labelsize)
+    else:
+        ax.set_ylabel("")
+        ax.tick_params(labelleft=False)
+
+
+def _style_grid_panel(
+    ax,
+    *,
+    labelsize: int = 9,
+    show_xlabel: bool = False,
+    show_ylabel: bool = False,
+):
+    """Per-panel grid: tick marks without numbers; axis names on edge panels only."""
+    ax.set_aspect("equal", adjustable="box")
+    ax.axhline(0.0, color="#cccccc", linewidth=0.6, zorder=0)
+    ax.axvline(0.0, color="#cccccc", linewidth=0.6, zorder=0)
+    ax.tick_params(
+        axis="both",
+        which="both",
+        labelsize=labelsize,
+        length=3,
+        labelleft=False,
+        labelbottom=False,
+    )
+    if show_xlabel:
+        ax.set_xlabel("y (m)", fontsize=labelsize)
+    else:
+        ax.set_xlabel("")
+    if show_ylabel:
+        ax.set_ylabel("x (m)", fontsize=labelsize)
+    else:
+        ax.set_ylabel("")
+
+
+def _topdown_axes_a4(fig: plt.Figure, n: int) -> list:
+    """3×5 grid with a centred bottom row of 4 — fits A4 width without excess height."""
+    gs = GridSpec(3, 10, figure=fig, height_ratios=[1, 1, 1], hspace=0.38, wspace=0.28)
+    axes: list = []
+    if n != 14:
+        raise ValueError(f"expected 14 patterns, got {n}")
+    for i in range(5):
+        axes.append(fig.add_subplot(gs[0, i * 2 : i * 2 + 2]))
+    for i in range(5):
+        axes.append(fig.add_subplot(gs[1, i * 2 : i * 2 + 2]))
+    for i in range(4):
+        axes.append(fig.add_subplot(gs[2, 1 + i * 2 : 3 + i * 2]))
+    return axes
+
+
+def _panel_limits(x: np.ndarray, y: np.ndarray, *, pad_frac: float = 0.14) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Square axis limits per maneuver so each path fills its panel."""
+    x_min, x_max = float(x.min()), float(x.max())
+    y_min, y_max = float(y.min()), float(y.max())
+    cx = 0.5 * (x_min + x_max)
+    cy = 0.5 * (y_min + y_max)
+    half = 0.5 * max(x_max - x_min, y_max - y_min, 1e-6)
+    half = max(half * (1.0 + pad_frac), 0.8)
+    return (cx - half, cx + half), (cy - half, cy + half)
 
 
 def plot_topdown_grid(profiles, output_stem: Path, dpi: int):
     n = len(profiles)
-    ncols = 5
-    nrows = int(math.ceil(n / ncols))
-    fig, axes = plt.subplots(nrows, ncols, figsize=(14, 2.6 * nrows), constrained_layout=True)
-    axes_flat = np.atleast_1d(axes).ravel()
+    title_size = 10
+    label_size = 9
+    # A4 text-block width (~170 mm); height kept modest so figure + caption fit one page.
+    fig = plt.figure(figsize=(6.8, 4.5))
+    axes = _topdown_axes_a4(fig, n)
 
     path_color = "#1a5276"
     paths = []
@@ -168,45 +239,41 @@ def plot_topdown_grid(profiles, output_stem: Path, dpi: int):
         x, y = integrate_topdown_path(yaw, speed, dt_s)
         paths.append((pattern, x, y))
 
-    x_min = min(float(x.min()) for _, x, _ in paths)
-    x_max = max(float(x.max()) for _, x, _ in paths)
-    y_min = min(float(y.min()) for _, _, y in paths)
-    y_max = max(float(y.max()) for _, _, y in paths)
-    center_x = 0.5 * (x_min + x_max)
-    center_y = 0.5 * (y_min + y_max)
-    half_span = 0.5 * max(x_max - x_min, y_max - y_min)
-    half_span *= 1.08
-    shared_xlim = (center_x - half_span, center_x + half_span)
-    shared_ylim = (center_y - half_span, center_y + half_span)
-
-    for ax, (pattern, x, y) in zip(axes_flat, paths):
+    for idx, (ax, (pattern, x, y)) in enumerate(zip(axes, paths)):
         ax.plot(x, y, color=path_color, linewidth=1.6, solid_capstyle="round")
-        ax.scatter(x[0], y[0], s=28, color="#27ae60", zorder=3, edgecolors="white", linewidths=0.5)
-        ax.scatter(x[-1], y[-1], s=28, color="#c0392b", zorder=3, edgecolors="white", linewidths=0.5)
-        ax.set_title(PATTERN_LABELS.get(pattern, pattern), fontsize=9, fontweight="medium")
-        ax.set_xlim(shared_xlim)
-        ax.set_ylim(shared_ylim)
-        _style_axes(ax)
-
-    for ax in axes_flat[len(profiles) :]:
-        ax.axis("off")
+        ax.scatter(x[0], y[0], s=26, color="#27ae60", zorder=3, edgecolors="white", linewidths=0.5)
+        ax.scatter(x[-1], y[-1], s=26, color="#c0392b", zorder=3, edgecolors="white", linewidths=0.5)
+        ax.set_title(PATTERN_LABELS.get(pattern, pattern), fontsize=title_size, fontweight="medium")
+        xlim, ylim = _panel_limits(x, y)
+        ax.set_xlim(xlim)
+        ax.set_ylim(ylim)
+        show_ylabel = idx in (0, 5, 10)
+        show_xlabel = idx >= 10
+        _style_grid_panel(
+            ax,
+            labelsize=label_size,
+            show_xlabel=show_xlabel,
+            show_ylabel=show_ylabel,
+        )
 
     legend_handles = [
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#27ae60", markersize=7, label="Start"),
         Line2D([0], [0], marker="o", color="w", markerfacecolor="#c0392b", markersize=7, label="End"),
-        Line2D([0], [0], color=path_color, linewidth=1.6, label="Integrated path"),
+        Line2D([0], [0], color=path_color, linewidth=1.6, label="Path"),
     ]
-    fig.legend(handles=legend_handles, loc="lower center", ncol=3, fontsize=9, frameon=False)
-    fig.suptitle(
-        "MuJoCo synthetic trajectory patterns (top-down, heading-normalised)",
-        fontsize=12,
-        fontweight="bold",
-        y=1.01,
+    fig.subplots_adjust(left=0.09, right=0.99, top=0.96, bottom=0.20)
+    fig.legend(
+        handles=legend_handles,
+        loc="upper center",
+        ncol=3,
+        fontsize=label_size,
+        frameon=False,
+        bbox_to_anchor=(0.5, 0.06),
     )
 
     for ext in ("pdf", "png"):
         out = output_stem.with_suffix(f".{ext}")
-        fig.savefig(out, dpi=dpi, bbox_inches="tight")
+        fig.savefig(out, dpi=dpi, bbox_inches="tight", pad_inches=0.06)
         print(f"Wrote {out}")
     plt.close(fig)
 
@@ -215,10 +282,6 @@ def plot_randomized_composites_topdown(
     paths,
     output_stem: Path,
     dpi: int,
-    *,
-    composite_profile: str,
-    segment_min_seconds: float,
-    segment_max_seconds: float,
 ):
     fig, ax = plt.subplots(figsize=(8.5, 8.5), constrained_layout=True)
     cmap = plt.get_cmap("turbo")
@@ -244,22 +307,15 @@ def plot_randomized_composites_topdown(
     _style_axes(ax)
 
     legend_handles = [
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="#27ae60", markersize=7, label="Shared start"),
-        Line2D([0], [0], color="#888888", linewidth=1.2, alpha=0.72, label="Composite sample"),
+        Line2D([0], [0], marker="o", color="w", markerfacecolor="#27ae60", markersize=7, label="shared start"),
+        Line2D([0], [0], color="#888888", linewidth=1.2, alpha=0.72, label="Sample trajectory"),
     ]
     ax.legend(handles=legend_handles, loc="upper right", fontsize=9, frameon=True, framealpha=0.9)
     fig.suptitle(
-        f"Composite trajectory randomization ({n} samples, top-down)",
+        "Randomized full trajectories",
         fontsize=12,
         fontweight="bold",
         y=1.02,
-    )
-    ax.set_title(
-        f"Segments drawn from {composite_profile} pool, "
-        f"{segment_min_seconds:.0f}–{segment_max_seconds:.0f} s each",
-        fontsize=9,
-        color="#555555",
-        pad=8,
     )
 
     for ext in ("pdf", "png"):
@@ -381,9 +437,6 @@ def main():
         composite_paths,
         args.output_dir / "trajectory_patterns_composite_randomized",
         dpi=args.dpi,
-        composite_profile=args.composite_profile,
-        segment_min_seconds=args.segment_min_seconds,
-        segment_max_seconds=args.segment_max_seconds,
     )
 
 
