@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 
-from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES
-from data_generation_pipeline_tools.visualize_raw_annotations import visualize_clip
+from common.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES
+from synthetic_data.pipeline.visualize_raw_annotations import visualize_clip
 
 
 class VisualizeRawAnnotationsTests(unittest.TestCase):
@@ -56,6 +56,7 @@ class VisualizeRawAnnotationsTests(unittest.TestCase):
                 max_frames=None,
                 output_width=900,
                 show_names=False,
+                use_detected_2d=False,
             )
             self.assertEqual(written, 1)
             self.assertTrue((out / clip_dir.name / "frame_0000.png").exists())

@@ -27,11 +27,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from data_generation_pipeline_tools.bicycle_dynamics_angles import (  # noqa: E402
+from common.bicycle_dynamics_angles import (  # noqa: E402
     bicycle_roll_angle,
     bicycle_steer_angle,
 )
-from data_generation_pipeline_tools.visualize_bicycle_pose3d import (  # noqa: E402
+from synthetic_data.pipeline.visualize_bicycle_pose3d import (  # noqa: E402
     axis_limits_for_poses,
     motion_to_images_or_video,
     reorient_for_display,
@@ -227,7 +227,7 @@ def parse_args() -> argparse.Namespace:
         help="Experiment results dir (default: results/<experiment>).",
     )
     p.add_argument("--results-dir", type=Path, default=REPO_ROOT / "results")
-    p.add_argument("--experiment", type=str, default="1_full_detection_pipeline")
+    p.add_argument("--experiment", type=str, default="inference")
     p.add_argument("--clip-id", type=str, default=None, help="Override example clip (default: from metrics.json).")
     p.add_argument("--fps", type=int, default=12)
     p.add_argument(

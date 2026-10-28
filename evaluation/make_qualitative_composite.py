@@ -13,17 +13,17 @@ import numpy as np
 from PIL import Image
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-PIPELINE_DIR = REPO_ROOT / "1_full_detection_pipeline"
+PIPELINE_DIR = REPO_ROOT / "inference"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 if str(PIPELINE_DIR) not in sys.path:
     sys.path.insert(0, str(PIPELINE_DIR))
 
-from data_generation_pipeline_tools.bicycle_keypoint_schema import (  # noqa: E402
+from common.bicycle_keypoint_schema import (  # noqa: E402
     BICYCLE_KEYPOINT_NAMES,
     KEYPOINT_INDEX,
 )
-from data_generation_pipeline_tools.visualize_bicycle_pose3d import (  # noqa: E402
+from synthetic_data.pipeline.visualize_bicycle_pose3d import (  # noqa: E402
     axis_limits_cube,
     axis_limits_for_poses,
     reorient_for_display,
@@ -31,7 +31,7 @@ from data_generation_pipeline_tools.visualize_bicycle_pose3d import (  # noqa: E
     subtract_root,
     view_angles_for_reorient,
 )
-from keypoint_detector_pipeline.io_utils import iter_jsonl  # noqa: E402
+from inference.lib.io_utils import iter_jsonl  # noqa: E402
 from pipeline_io import KEYPOINTS_2D_NAME, KEYPOINTS_3D_NAME  # noqa: E402
 from visualize_intermediates import draw_keypoints_2d_frame  # noqa: E402
 

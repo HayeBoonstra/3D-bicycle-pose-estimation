@@ -19,7 +19,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES  # noqa: E402
+from common.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES  # noqa: E402
 from evaluation.common import (
     CAPACITY_EXPERIMENTS,
     CAPACITY_GT_TRAINING_EXPERIMENTS,
@@ -446,7 +446,7 @@ def plot_window_dynamics_multiples(
 
 
 def _circular_diff_deg(pred_deg: np.ndarray, gt_deg: np.ndarray) -> np.ndarray:
-    from data_generation_pipeline_tools.visualize_bicycle_pose3d import _wrap_pi
+    from synthetic_data.pipeline.visualize_bicycle_pose3d import _wrap_pi
 
     return np.rad2deg(_wrap_pi(np.deg2rad(np.asarray(pred_deg, dtype=np.float64) - gt_deg)))
 

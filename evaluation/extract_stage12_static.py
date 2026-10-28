@@ -23,7 +23,7 @@ if str(REPO_ROOT) not in sys.path:
 from evaluation.common import ensure_dir  # noqa: E402
 
 DEFAULT_DATASET_ROOT = REPO_ROOT / "data" / "bicycle_pose_dataset"
-DEFAULT_MMPOSE_CONFIG = REPO_ROOT / "2d_keypoint_detector_training" / "rtmpose_bicycle_full.py"
+DEFAULT_MMPOSE_CONFIG = REPO_ROOT / "training" / "pose2d" / "rtmpose_bicycle_full.py"
 DEFAULT_MMPOSE_CHECKPOINT = (
     REPO_ROOT / "training_outputs" / "mmpose_bicycle_rtmpose_l_gpu" / "best_coco_AP_epoch_175.pth"
 )
@@ -99,7 +99,7 @@ def _run_detection(
     confidence: float,
     resume: bool,
 ) -> dict[str, dict]:
-    from keypoint_detector_pipeline.detect_rfdetr import RFDETRDetector
+    from inference.lib.detect_rfdetr import RFDETRDetector
 
     cached = _load_jsonl_by_key(cache_path, "image_id") if resume else {}
     if resume and cache_path.is_file() and not cached:
@@ -139,7 +139,7 @@ def _run_pose(
     device: str,
     resume: bool,
 ) -> dict[str, dict]:
-    from keypoint_detector_pipeline.pose2d_mmpose import MMPose2DInferencer
+    from inference.lib.pose2d_mmpose import MMPose2DInferencer
 
     cached = _load_jsonl_by_key(cache_path, "image_id") if resume else {}
     if not resume and cache_path.is_file():

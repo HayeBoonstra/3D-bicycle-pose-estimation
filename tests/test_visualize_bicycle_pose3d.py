@@ -1,20 +1,25 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 import numpy as np
 
-from data_generation_pipeline_tools.bicycle_keypoint_schema import (
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT / "third_party") not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT / "third_party"))
+
+from common.bicycle_keypoint_schema import (
     BICYCLE_KEYPOINT_NAMES,
     BICYCLE_SKELETON_NAMES,
     KEYPOINT_INDEX,
     SKELETON_PART_GROUPS,
     validate_skeleton_part_groups,
 )
-from data_generation_pipeline_tools.visualize_bicycle_pose3d import (
+from synthetic_data.pipeline.visualize_bicycle_pose3d import (
     bicycle_crank_angle,
     load_motion,
     motion_to_images_or_video,
@@ -30,7 +35,7 @@ class VisualizeBicyclePose3DTests(unittest.TestCase):
         np.testing.assert_allclose(rr[:, 0, :], 0.0, atol=1e-6)
 
     def test_bicycle_steer_matches_posemamba_loss(self) -> None:
-        from data_generation_pipeline_tools.bicycle_dynamics_angles import bicycle_steer_angle
+        from common.bicycle_dynamics_angles import bicycle_steer_angle
         from PoseMamba.lib.model.loss import bicycle_steer_angle as steer_loss
         import torch
 
@@ -105,7 +110,7 @@ class VisualizeBicyclePose3DTests(unittest.TestCase):
 
     def test_camera_view_reorient_flips_image_up(self) -> None:
         pts = np.array([[0.1, -0.2, 0.3]], dtype=np.float32)
-        from data_generation_pipeline_tools.visualize_bicycle_pose3d import reorient_for_display, view_angles_for_reorient
+        from synthetic_data.pipeline.visualize_bicycle_pose3d import reorient_for_display, view_angles_for_reorient
 
         out = reorient_for_display(pts, "camera_view")
         np.testing.assert_allclose(out[0], [0.1, -0.3, 0.2], atol=1e-6)

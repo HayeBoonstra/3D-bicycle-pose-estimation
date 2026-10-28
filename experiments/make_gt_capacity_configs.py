@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TRAIN_DIR = REPO_ROOT / "3d_keypoint_detector_training"
+TRAIN_DIR = REPO_ROOT / "training" / "pose3d"
 if str(TRAIN_DIR) not in sys.path:
     sys.path.insert(0, str(TRAIN_DIR))
 

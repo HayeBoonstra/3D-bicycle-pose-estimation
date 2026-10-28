@@ -7,16 +7,16 @@ from pathlib import Path
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-MUJOCO_TOOLS = REPO_ROOT / "Mujoco_bicycle_path_generator"
+MUJOCO_TOOLS = REPO_ROOT / "synthetic_data/mujoco"
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 if str(MUJOCO_TOOLS) not in sys.path:
     sys.path.insert(0, str(MUJOCO_TOOLS))
 
 from bicycle_constructor import Bicycle
-from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX
+from common.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX
 from export_posemamba_annotations import look_at_camera, sample_virtual_cameras
-from keypoint_detector_pipeline.world_transform import project_to_image, world_to_camera
+from inference.lib.world_transform import project_to_image, world_to_camera
 
 
 class MujocoDirectExportTests(unittest.TestCase):
@@ -30,7 +30,7 @@ class MujocoDirectExportTests(unittest.TestCase):
     def test_front_wheel_cardinal_keypoints_are_not_rotated_by_fork_angle(self):
         import mujoco
 
-        generator_dir = REPO_ROOT / "Mujoco_bicycle_path_generator"
+        generator_dir = REPO_ROOT / "synthetic_data/mujoco"
         if str(generator_dir) not in sys.path:
             sys.path.insert(0, str(generator_dir))
         from world_contructor import World

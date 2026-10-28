@@ -19,7 +19,7 @@ CHECKPOINT_BASE="${CHECKPOINT_BASE:-${REPO_ROOT}/posemamba_weights}"
 CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}"
 CONFIGS_DIR="${REPO_ROOT}/experiments/configs"
 MANIFEST="${CONFIGS_DIR}/gt_capacity_experiments.json"
-POSEMAMBA_ROOT="${REPO_ROOT}/PoseMamba"
+POSEMAMBA_ROOT="${REPO_ROOT}/third_party/PoseMamba"
 GT_CORPUS="PoseMamba_f243s81_gt"
 FILTER="${1:-}"
 

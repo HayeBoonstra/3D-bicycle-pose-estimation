@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from keypoint_detector_pipeline.schema import BICYCLE_KEYPOINT_NAMES
+from inference.lib.schema import BICYCLE_KEYPOINT_NAMES
 
 
 class SchemaOrderTests(unittest.TestCase):

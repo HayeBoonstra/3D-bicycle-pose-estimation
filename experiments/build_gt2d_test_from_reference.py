@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an oracle GT-2D PoseMamba test split from a detected-2D reference split.
+"""Build an GT-2D PoseMamba test split from a detected-2D reference split.
 
 This is intentionally stricter than ``build_sequences.py --input-2d gt`` for
 evaluation: it preserves the exact reference test windows and 3D labels, then
@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from data_generation_pipeline_tools.bicycle_keypoint_schema import (  # noqa: E402
+from common.bicycle_keypoint_schema import (  # noqa: E402
     BICYCLE_KEYPOINT_NAMES,
     KEYPOINT_INDEX,
 )
@@ -139,7 +139,7 @@ def _write_manifest(
         "splits": {"test": sorted(clip_ids)},
         "normalization": "bbox_center_scale",
         "note": (
-            "Oracle test split built from detected-2D reference pickles. "
+            "test split built from detected-2D reference pickles. "
             "Window keys, data_label, and dynamics_gt are copied from the reference; "
             "only data_input is replaced by projected GT 2D."
         ),

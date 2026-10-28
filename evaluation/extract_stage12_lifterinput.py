@@ -14,13 +14,13 @@ from typing import Any
 import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TRAIN_DIR = REPO_ROOT / "3d_keypoint_detector_training"
+TRAIN_DIR = REPO_ROOT / "training" / "pose3d"
 if str(TRAIN_DIR) not in sys.path:
     sys.path.insert(0, str(TRAIN_DIR))
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX  # noqa: E402
+from common.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX  # noqa: E402
 from posemamba_bicycle_io import load_sequence_pkl  # noqa: E402
 from evaluation.common import default_detected2d_test_dir, default_raw_root, ensure_dir  # noqa: E402
 

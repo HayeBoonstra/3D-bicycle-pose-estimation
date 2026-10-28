@@ -26,7 +26,7 @@ OUTPUT_ROOT="${OUTPUT_ROOT:-${SSD_BASE}/posemamba_training_sequences}"
 SPLIT_SEED="${SPLIT_SEED:-7}"
 FORCE_REBUILD="${FORCE_REBUILD:-0}"
 CONDA_ENV="${CONDA_ENV:-posemamba}"
-BUILD_SCRIPT="${REPO_ROOT}/3d_keypoint_detector_training/build_sequences.py"
+BUILD_SCRIPT="${REPO_ROOT}/training/pose3d/build_sequences.py"
 
 WINDOW_SIZE=243
 STRIDE=81

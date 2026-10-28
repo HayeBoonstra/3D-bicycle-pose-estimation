@@ -50,14 +50,14 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 
-# Blender files
-Blender files/HDRIs/*
-Blender files/Textures/*
-Blender files/Characters/*
-Blender files/Scenes/*
-Blender files/Bicycles/*
-Blender files/Props/*
-!Blender files/Scenes/scenes.yaml
+# Blender assets (large; distribute separately)
+synthetic_data/blender/HDRIs/*
+synthetic_data/blender/Textures/*
+synthetic_data/blender/Characters/*
+synthetic_data/blender/Scenes/*
+synthetic_data/blender/Bicycles/*
+synthetic_data/blender/Props/*
+!synthetic_data/blender/Scenes/scenes.yaml
 
 # Generated datasets and renders
 raw_renders/
@@ -71,13 +71,19 @@ data/bicycle_pose_dataset/videos/
 data/bicycle_pose_dataset/overlays/
 data/bicycle_pose_dataset/splits.json
 data/*
+!data/README.md
 
-1_full_detection_pipeline/input_sequence/
-1_full_detection_pipeline/input_sequence_left_turn/
-1_full_detection_pipeline/output/
-1_full_detection_pipeline/output_left_turn/
+inference/input_sequence/
+inference/input_sequence_left_turn/
+inference/output/
+inference/output_left_turn/
+inference/*.bin
+inference/posemamba_*.bin
 
-Thesis results visualizations/Full pipeline visualization with dynamics
+results/**/*.npz
+results/**/figures/
+results/**/preds_3d.npz
+third_party/PoseMamba/checkpoints/
 
 # Logs and local data
 results/stage12_lifterinput_records.jsonl

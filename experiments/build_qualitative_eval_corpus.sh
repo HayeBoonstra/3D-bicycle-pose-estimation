@@ -69,7 +69,7 @@ echo "[qualitative] RAW_ROOT=${RAW_ROOT}"
 echo "[qualitative] TRAJECTORY_ROOT=${TRAJECTORY_ROOT}"
 echo "[qualitative] SYNC_WINDOW_SIZE=${SYNC_WINDOW_SIZE}"
 
-_run_py "${CONDA_POSEMAMBA}" "${REPO_ROOT}/data_generation_pipeline_tools/ensure_mujoco_trajectories.py" \
+_run_py "${CONDA_POSEMAMBA}" "${REPO_ROOT}/synthetic_data/pipeline/ensure_mujoco_trajectories.py" \
   --trajectory-root "${TRAJECTORY_ROOT}" \
   --trajectory-manifest "${TRAJECTORY_MANIFEST}" \
   --raw-root "${RAW_ROOT}" \
@@ -126,8 +126,8 @@ if [[ "${SKIP_RENDER}" != "1" ]]; then
       continue
     fi
     echo "[qualitative] rendering ${clip_id} ..."
-    "${RESOLVED_BLENDER}" --background "${REPO_ROOT}/Blender files/Scenes/${blend}" \
-      --python "${REPO_ROOT}/data_generation_pipeline_tools/render_clip.py" -- \
+    "${RESOLVED_BLENDER}" --background "${REPO_ROOT}/synthetic_data/blender/Scenes/${blend}" \
+      --python "${REPO_ROOT}/synthetic_data/pipeline/render_clip.py" -- \
       --clip-id "${clip_id}" \
       --scene-id "${scene_id}" \
       --camera-seed "${camera_seed}" \
@@ -142,15 +142,15 @@ else
 fi
 
 if [[ "${SKIP_DETECTION}" != "1" ]]; then
-  _run_py "${CONDA_RFDETR}" "${REPO_ROOT}/3d_keypoint_detector_training/export_clip_detections.py" \
+  _run_py "${CONDA_RFDETR}" "${REPO_ROOT}/training/pose3d/export_clip_detections.py" \
     --raw-root "${RAW_ROOT}" \
     --rfdetr-model "${RFDETR_MODEL:-rfdetr-2xlarge}" \
     --det-confidence "${DET_CONFIDENCE:-0.3}" \
     --resume
 
-  _run_py "${CONDA_MMPOSE}" "${REPO_ROOT}/3d_keypoint_detector_training/export_detected_2d.py" \
+  _run_py "${CONDA_MMPOSE}" "${REPO_ROOT}/training/pose3d/export_detected_2d.py" \
     --raw-root "${RAW_ROOT}" \
-    --mmpose-config "${MMPOSE_CONFIG:-${REPO_ROOT}/2d_keypoint_detector_training/rtmpose_bicycle_full.py}" \
+    --mmpose-config "${MMPOSE_CONFIG:-${REPO_ROOT}/training/pose2d/rtmpose_bicycle_full.py}" \
     --mmpose-checkpoint "${MMPOSE_CHECKPOINT:-${REPO_ROOT}/training_outputs/mmpose_bicycle_rtmpose_l_gpu/best_coco_AP_epoch_175.pth}" \
     --pose-mode "${POSE_MODE:-detection_bbox}" \
     --device "${MMPOSE_DEVICE:-cuda:0}" \

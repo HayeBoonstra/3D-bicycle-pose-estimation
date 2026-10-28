@@ -15,7 +15,7 @@ import numpy as np  # noqa: E402
 import torch  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TRAIN_DIR = REPO_ROOT / "3d_keypoint_detector_training"
+TRAIN_DIR = REPO_ROOT / "training" / "pose3d"
 POSEMAMBA_ROOT = REPO_ROOT / "PoseMamba"
 
 if str(TRAIN_DIR) not in sys.path:
@@ -25,7 +25,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from lift_from_2d_array import load_posemamba_lifter  # noqa: E402
 from posemamba_bicycle_io import Input2DMode, load_sequence_pkl, prepare_2d, to_batch_2d  # noqa: E402
-from data_generation_pipeline_tools.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES  # noqa: E402
+from common.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES  # noqa: E402
 from evaluation.common import default_detected2d_test_dir, ensure_dir  # noqa: E402
 
 JOINT_SHORT = [n.replace("k_", "") for n in BICYCLE_KEYPOINT_NAMES]
@@ -281,7 +281,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    # load_posemamba_lifter chdirs into PoseMamba/; resolve paths first.
+    # load_posemamba_lifter chdirs into third_party/PoseMamba/; resolve paths first.
     out_dir = ensure_dir(args.out.resolve())
     checkpoint = args.checkpoint.resolve()
     config = args.config.resolve()

@@ -28,7 +28,7 @@ import numpy as np
 import torch
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TRAIN_DIR = REPO_ROOT / "3d_keypoint_detector_training"
+TRAIN_DIR = REPO_ROOT / "training" / "pose3d"
 if str(TRAIN_DIR) not in sys.path:
     sys.path.insert(0, str(TRAIN_DIR))
 if str(REPO_ROOT) not in sys.path:
@@ -42,11 +42,11 @@ from lift_from_2d_array import (  # noqa: E402
     squeeze_batch,
 )
 from posemamba_bicycle_io import Input2DMode, load_sequence_pkl, prepare_2d, prepare_gt_3d  # noqa: E402
-from data_generation_pipeline_tools.bicycle_dynamics_angles import (  # noqa: E402
+from common.bicycle_dynamics_angles import (  # noqa: E402
     bicycle_roll_angle,
     bicycle_steer_angle,
 )
-from data_generation_pipeline_tools.visualize_bicycle_pose3d import bicycle_crank_angle  # noqa: E402
+from synthetic_data.pipeline.visualize_bicycle_pose3d import bicycle_crank_angle  # noqa: E402
 from evaluation.common import (  # noqa: E402
     Input2DSource,
     contiguous_segment_slices,
@@ -351,7 +351,7 @@ def parse_args() -> argparse.Namespace:
         "--input-2d",
         choices=("detected", "gt"),
         default="detected",
-        help="2D input source: detected (RTMPose+RF-DETR, default) or gt (oracle projected 2D)",
+        help="2D input source: detected (RTMPose+RF-DETR, default) or gt (projected 2D)",
     )
     p.add_argument(
         "--test-dir",

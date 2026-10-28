@@ -12,7 +12,7 @@ import torch
 import torch.nn as nn
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TRAIN_DIR = REPO_ROOT / "3d_keypoint_detector_training"
+TRAIN_DIR = REPO_ROOT / "training" / "pose3d"
 POSEMAMBA_ROOT = REPO_ROOT / "PoseMamba"
 
 if str(TRAIN_DIR) not in sys.path:

@@ -11,7 +11,7 @@ import numpy as np
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
-# Secondary SSD layout used by data_generation_pipeline_tools/setup_secondary_data_disk.sh
+# Secondary SSD layout used by synthetic_data/pipeline/setup_secondary_data_disk.sh
 SSD_ROOT = Path("/mnt/SmallSSD/3D-bicycle-pose-estimation")
 
 
@@ -72,7 +72,7 @@ def _corpus_subdir_from_config(cfg: dict) -> str | None:
 
 
 def _gt2d_corpus_subdir_from_config(cfg: dict) -> str | None:
-    """Map a checkpoint config to the oracle (GT-2D) corpus folder name."""
+    """Map a checkpoint config to the GT-2D corpus folder name."""
     subdir = _corpus_subdir_from_config(cfg)
     if subdir is None:
         return None
@@ -92,7 +92,7 @@ def _resolve_test_dir(subdir: str, *, checkpoint_label: str, cfg_path: Path) -> 
 
 
 def test_dir_for_input_2d(checkpoint: Path, input_2d: Input2DSource) -> Path:
-    """Resolve BICYCLE/test pickles for detected-2D or oracle GT-2D evaluation."""
+    """Resolve BICYCLE/test pickles for detected-2D or GT-2D evaluation."""
     if input_2d == "detected":
         return detected2d_test_dir_for_checkpoint(checkpoint)
 
@@ -126,7 +126,7 @@ def detected2d_test_dir_for_checkpoint(checkpoint: Path) -> Path:
     return default_detected2d_test_dir()
 
 
-# Capacity ablation experiments (S/B/L/X) for GT-2D oracle eval and comparison tables.
+# Capacity ablation experiments (S/B/L/X) for GT-2D eval and comparison tables.
 CAPACITY_EXPERIMENTS = ("capacity_s", "capacity_b", "capacity_l", "capacity_x")
 # Models trained on the GT-projected 2D corpus (PoseMamba_f243s81_gt).
 CAPACITY_GT_TRAINING_EXPERIMENTS = (

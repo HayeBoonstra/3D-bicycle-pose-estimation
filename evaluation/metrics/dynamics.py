@@ -23,12 +23,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from data_generation_pipeline_tools.bicycle_dynamics_angles import (  # noqa: E402
+from common.bicycle_dynamics_angles import (  # noqa: E402
     bicycle_roll_angle,
     bicycle_steer_angle,
     bicycle_steer_angle_hub,
 )
-from data_generation_pipeline_tools.visualize_bicycle_pose3d import (  # noqa: E402
+from synthetic_data.pipeline.visualize_bicycle_pose3d import (  # noqa: E402
     _wrap_pi,
     bicycle_crank_angle,
 )

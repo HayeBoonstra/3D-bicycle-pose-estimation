@@ -1,0 +1,710 @@
+"""Build PoseMamba-ready sequence datasets from synthetic clip annotations."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pickle
+import random
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+POSEMAMBA_ROOT = REPO_ROOT / "PoseMamba"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+if str(POSEMAMBA_ROOT) not in sys.path:
+    sys.path.insert(0, str(POSEMAMBA_ROOT))
+
+from common.bicycle_keypoint_schema import BICYCLE_KEYPOINT_NAMES, KEYPOINT_INDEX
+from inference.lib.preprocess_roi import bbox_xyxy_from_keypoints
+from lib.utils.utils_data import split_clips
+
+DETECTED_2D_PREFIX = "keypoints_2d_detected_frame_"
+
+
+@dataclass
+class ClipData:
+    clip_id: str
+    fps: int
+    image_wh: tuple[int, int]
+    frame_idx: np.ndarray
+    points_2d: np.ndarray  # [F, J, 2]
+    conf_2d: np.ndarray  # [F, J]
+    points_3d_world: np.ndarray  # [F, J, 3]
+    points_3d_cam: np.ndarray  # [F, J, 3]
+    valid_3d: np.ndarray  # [F, J]
+    missing_mask: np.ndarray  # [F, J]
+    occluded_mask: np.ndarray  # [F, J]
+    in_front_mask: np.ndarray  # [F, J]
+    K: np.ndarray  # [3, 3]
+    R: np.ndarray  # [3, 3]
+    t: np.ndarray  # [3]
+    steer_deg: np.ndarray  # [F]
+    roll_deg: np.ndarray  # [F]
+
+
+def _load_json(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _load_jsonl(path: Path) -> list[dict]:
+    rows: list[dict] = []
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rows.append(json.loads(line))
+    return rows
+
+
+def _posemamba_subdir_name(window_size: int, stride: int, dataset_tag: str | None) -> str:
+    name = f"PoseMamba_f{window_size}s{stride}"
+    if dataset_tag:
+        name += f"_{dataset_tag}"
+    return name
+
+
+def _sort_2d_frames(annotation_dir: Path) -> list[dict]:
+    rows = []
+    for path in sorted(annotation_dir.glob("keypoints_2d_frame_*.json")):
+        rows.append(_load_json(path))
+    return sorted(rows, key=lambda item: int(item["frame_index"]))
+
+
+def _sort_detected_frames(annotation_dir: Path) -> list[dict]:
+    rows = []
+    for path in sorted(annotation_dir.glob(f"{DETECTED_2D_PREFIX}*.json")):
+        rows.append(_load_json(path))
+    return sorted(rows, key=lambda item: int(item["frame_index"]))
+
+
+def _xywh_from_keypoints_row(row2d: dict) -> np.ndarray:
+    points = np.zeros((len(BICYCLE_KEYPOINT_NAMES), 2), dtype=np.float32)
+    conf = np.zeros((len(BICYCLE_KEYPOINT_NAMES),), dtype=np.float32)
+    for kp in row2d["keypoints"]:
+        j = KEYPOINT_INDEX[kp["name"]]
+        points[j] = [float(kp["x"]), float(kp["y"])]
+        conf[j] = float(kp.get("det_score", kp.get("v", 0)))
+    width = int(row2d.get("image_width", 0) or 0)
+    height = int(row2d.get("image_height", 0) or 0)
+    if width <= 0 or height <= 0:
+        width, height = 1280, 720
+    xyxy = bbox_xyxy_from_keypoints(points, (width, height), confidence=conf)
+    x1, y1, x2, y2 = xyxy
+    return np.asarray([x1, y1, x2 - x1, y2 - y1], dtype=np.float32)
+
+
+def _normalize_2d(points_2d: np.ndarray, bboxes_xywh: np.ndarray) -> np.ndarray:
+    centers = np.stack([bboxes_xywh[:, 0] + bboxes_xywh[:, 2] * 0.5, bboxes_xywh[:, 1] + bboxes_xywh[:, 3] * 0.5], axis=-1)
+    scales = np.maximum(1.0, np.maximum(bboxes_xywh[:, 2], bboxes_xywh[:, 3]))
+    return ((points_2d - centers[:, None, :]) / scales[:, None, None]).astype(np.float32)
+
+
+def _assert_joint_order(names: list[str]) -> None:
+    if names != BICYCLE_KEYPOINT_NAMES:
+        raise ValueError("Joint names do not match canonical bicycle keypoint order.")
+
+
+def _read_clip(
+    clip_dir: Path,
+    *,
+    input_2d: str = "gt",
+    bbox_source: str = "gt",
+) -> ClipData:
+    annotation_dir = clip_dir / "per_frame_annotations"
+    k3d_path = clip_dir / "keypoints_3d.jsonl"
+    camera_path = clip_dir / "camera.json"
+    if not annotation_dir.exists() or not k3d_path.exists() or not camera_path.exists():
+        raise FileNotFoundError(f"Clip missing required files: {clip_dir}")
+
+    frames_gt = _sort_2d_frames(annotation_dir)
+    if input_2d == "detected":
+        frames2d = _sort_detected_frames(annotation_dir)
+        if not frames2d:
+            raise FileNotFoundError(
+                f"No detected 2D sidecars ({DETECTED_2D_PREFIX}*.json) in {annotation_dir}. "
+                "Run export_detected_2d.py first."
+            )
+        gt_by_index = {int(row["frame_index"]): row for row in frames_gt}
+        for row in frames2d:
+            idx = int(row["frame_index"])
+            if idx not in gt_by_index:
+                raise ValueError(f"Detected frame {idx} has no matching GT 2D in {clip_dir.name}")
+    else:
+        frames2d = frames_gt
+        gt_by_index = None
+
+    rows3d_all = sorted(_load_jsonl(k3d_path), key=lambda item: int(item["frame_index"]))
+    camera = _load_json(camera_path)
+
+    if input_2d == "detected":
+        det_indices = [int(row["frame_index"]) for row in frames2d]
+        rows3d_by_idx = {int(row["frame_index"]): row for row in rows3d_all}
+        missing_3d = [idx for idx in det_indices if idx not in rows3d_by_idx]
+        if missing_3d:
+            raise ValueError(f"Detected frames missing 3D rows in {clip_dir.name}: {missing_3d[:5]}")
+        rows3d = [rows3d_by_idx[idx] for idx in det_indices]
+        frames2d = sorted(frames2d, key=lambda item: int(item["frame_index"]))
+    else:
+        rows3d = rows3d_all
+        if len(frames2d) != len(rows3d):
+            raise ValueError(f"Frame count mismatch in clip {clip_dir.name}: 2D={len(frames2d)} 3D={len(rows3d)}")
+
+    if rows3d and "joint_names" in rows3d[0]:
+        _assert_joint_order(list(rows3d[0]["joint_names"]))
+
+    F = len(frames2d)
+    J = len(BICYCLE_KEYPOINT_NAMES)
+    points_2d = np.zeros((F, J, 2), dtype=np.float32)
+    conf_2d = np.zeros((F, J), dtype=np.float32)
+    bboxes = np.zeros((F, 4), dtype=np.float32)
+    points_3d_world = np.zeros((F, J, 3), dtype=np.float32)
+    points_3d_cam = np.zeros((F, J, 3), dtype=np.float32)
+    valid_3d = np.zeros((F, J), dtype=np.uint8)
+    missing_mask = np.zeros((F, J), dtype=np.uint8)
+    occluded_mask = np.zeros((F, J), dtype=np.uint8)
+    in_front_mask = np.zeros((F, J), dtype=np.uint8)
+    frame_idx = np.zeros((F,), dtype=np.int32)
+    steer_deg = np.zeros((F,), dtype=np.float32)
+    roll_deg = np.zeros((F,), dtype=np.float32)
+
+    for i, (row2d, row3d) in enumerate(zip(frames2d, rows3d)):
+        frame_idx[i] = int(row2d["frame_index"])
+        gt_row = gt_by_index[int(row2d["frame_index"])] if gt_by_index is not None else row2d
+        if bbox_source == "gt":
+            bboxes[i] = np.asarray(
+                gt_row.get(
+                    "gt_bbox_xywh",
+                    [0.0, 0.0, float(gt_row.get("image_width", 0)), float(gt_row.get("image_height", 0))],
+                ),
+                dtype=np.float32,
+            )
+        elif bbox_source == "keypoints":
+            bboxes[i] = _xywh_from_keypoints_row(row2d)
+        elif bbox_source == "detection":
+            det_bbox = row2d.get("det_bbox_xyxy")
+            if det_bbox is None:
+                det_bbox = row2d.get("bbox_xyxy")
+            if det_bbox is None:
+                bboxes[i] = _xywh_from_keypoints_row(row2d)
+            else:
+                x1, y1, x2, y2 = [float(v) for v in det_bbox]
+                bboxes[i] = np.asarray([x1, y1, max(1.0, x2 - x1), max(1.0, y2 - y1)], dtype=np.float32)
+        else:
+            raise ValueError(f"Unknown bbox_source: {bbox_source}")
+
+        for kp in row2d["keypoints"]:
+            j = KEYPOINT_INDEX[kp["name"]]
+            points_2d[i, j] = np.asarray([kp["x"], kp["y"]], dtype=np.float32)
+            if "det_score" in kp:
+                conf_2d[i, j] = float(kp["det_score"])
+            else:
+                conf_2d[i, j] = float(kp.get("v", 0)) / 2.0
+
+        kps_world = row3d.get("kps_world", [])
+        if len(kps_world) != J:
+            world_from_named = [None] * J
+            for kp in row3d.get("keypoints", []):
+                if kp.get("name") in KEYPOINT_INDEX:
+                    world_from_named[KEYPOINT_INDEX[kp["name"]]] = kp.get("world")
+            kps_world = world_from_named
+
+        kps_cam = row3d.get("kps_camera")
+        if not isinstance(kps_cam, list) or len(kps_cam) != J:
+            kps_cam = [None] * J
+            R = np.asarray(camera["R"], dtype=np.float32)
+            t = np.asarray(camera["t"], dtype=np.float32)
+            for j, pw in enumerate(kps_world):
+                if pw is None:
+                    continue
+                pw_np = np.asarray(pw, dtype=np.float32)
+                kps_cam[j] = (R @ pw_np + t).tolist()
+
+        valid_row = row3d.get("valid_3d")
+        if not isinstance(valid_row, list) or len(valid_row) != J:
+            valid_row = [0 if pw is None else 1 for pw in kps_world]
+        missing_row = row3d.get("missing_mask")
+        if not isinstance(missing_row, list) or len(missing_row) != J:
+            missing_row = [1 - int(v) for v in valid_row]
+        occluded_row = row3d.get("occluded_mask")
+        if not isinstance(occluded_row, list) or len(occluded_row) != J:
+            occluded_row = [0] * J
+        in_front_row = row3d.get("in_front_mask")
+        if not isinstance(in_front_row, list) or len(in_front_row) != J:
+            in_front_row = [1 if cam is not None and cam[2] > 0 else 0 for cam in kps_cam]
+
+        for j in range(J):
+            if kps_world[j] is not None:
+                points_3d_world[i, j] = np.asarray(kps_world[j], dtype=np.float32)
+            if kps_cam[j] is not None:
+                points_3d_cam[i, j] = np.asarray(kps_cam[j], dtype=np.float32)
+            valid_3d[i, j] = np.uint8(valid_row[j])
+            missing_mask[i, j] = np.uint8(missing_row[j])
+            occluded_mask[i, j] = np.uint8(occluded_row[j])
+            in_front_mask[i, j] = np.uint8(in_front_row[j])
+
+        frame_index = int(row3d.get("frame_index", i))
+        dynamics = row3d.get("dynamics_gt")
+        if not isinstance(dynamics, dict):
+            raise ValueError(
+                f"{clip_dir.name}: frame {frame_index} missing dynamics_gt in keypoints_3d.jsonl. "
+                "Re-export annotations with TRAJECTORY_CSV set or run inject_dynamics_into_raw_clips.py."
+            )
+        steer_deg[i] = float(dynamics["steer_deg"])
+        roll_deg[i] = float(dynamics["roll_deg"])
+        if frame_index != i:
+            raise ValueError(f"{clip_dir.name}: non-contiguous frame_index {frame_index} at row {i}")
+
+    points_2d_norm = _normalize_2d(points_2d, bboxes)
+    return ClipData(
+        clip_id=rows3d[0]["clip_id"],
+        fps=int(rows3d[0].get("fps", 24)),
+        image_wh=tuple(camera.get("image_size", [0, 0])),
+        frame_idx=frame_idx,
+        points_2d=points_2d_norm,
+        conf_2d=conf_2d,
+        points_3d_world=points_3d_world,
+        points_3d_cam=points_3d_cam,
+        valid_3d=valid_3d,
+        missing_mask=missing_mask,
+        occluded_mask=occluded_mask,
+        in_front_mask=in_front_mask,
+        K=np.asarray(camera["K"], dtype=np.float32),
+        R=np.asarray(camera["R"], dtype=np.float32),
+        t=np.asarray(camera["t"], dtype=np.float32),
+        steer_deg=steer_deg,
+        roll_deg=roll_deg,
+    )
+
+
+def _window_clip_legacy_center(clip: ClipData, window_size: int, stride: int) -> list[dict]:
+    """Legacy center-padded windows (not H36M split_clips). Kept for --slice-style legacy_center."""
+    radius = window_size // 2
+    idxs = list(range(0, clip.points_2d.shape[0], stride))
+    samples: list[dict] = []
+    for center in idxs:
+        frame_ids = np.clip(np.arange(center - radius, center + radius + 1), 0, clip.points_2d.shape[0] - 1)
+        samples.append(_pack_window_sample(clip, frame_ids, st=int(frame_ids[0]), end=int(frame_ids[-1]) + 1, slice_style="legacy_center"))
+    return samples
+
+
+def _pack_window_sample(
+    clip: ClipData,
+    frame_ids: np.ndarray | list[int],
+    *,
+    st: int,
+    end: int,
+    slice_style: str,
+) -> dict:
+    frame_ids = np.asarray(frame_ids, dtype=np.int64)
+    return {
+        "clip_id": clip.clip_id,
+        "frame_idx": clip.frame_idx[frame_ids],
+        "kpts2d": clip.points_2d[frame_ids],
+        "kpts2d_conf": clip.conf_2d[frame_ids],
+        "kpts3d_cam": clip.points_3d_cam[frame_ids],
+        "valid_mask": clip.valid_3d[frame_ids],
+        "K": clip.K,
+        "R": clip.R,
+        "t": clip.t,
+        "image_wh": np.asarray(clip.image_wh, dtype=np.int32),
+        "steer_deg": clip.steer_deg[frame_ids],
+        "roll_deg": clip.roll_deg[frame_ids],
+        "meta": {
+            "clip_id": clip.clip_id,
+            "st": int(st),
+            "end": int(end),
+            "slice_style": slice_style,
+            "window_size": int(frame_ids.shape[0]),
+            "has_dynamics_gt": True,
+        },
+    }
+
+
+def _slice_clip_contiguous(clip: ClipData, window_size: int, stride: int) -> list[dict]:
+    """PoseMamba-compatible contiguous windows (same as convert_h36m / split_clips)."""
+    num_frames = clip.points_2d.shape[0]
+    vid_list = [0] * num_frames
+    index_lists = split_clips(vid_list, window_size, stride)
+    samples: list[dict] = []
+    for index_list in index_lists:
+        frame_ids = np.asarray(list(index_list), dtype=np.int64)
+        st = int(frame_ids[0])
+        end = int(frame_ids[-1]) + 1
+        samples.append(_pack_window_sample(clip, frame_ids, st=st, end=end, slice_style="contiguous"))
+    return samples
+
+
+def _slice_clip(clip: ClipData, window_size: int, stride: int, slice_style: str) -> list[dict]:
+    if slice_style == "legacy_center":
+        return _window_clip_legacy_center(clip, window_size, stride)
+    return _slice_clip_contiguous(clip, window_size, stride)
+
+
+def _load_reference_splits(manifest_path: Path) -> dict[str, list[str]]:
+    """Load train/val/test clip-id lists from a reference corpus manifest."""
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    splits = manifest.get("splits")
+    if not isinstance(splits, dict):
+        raise ValueError(f"{manifest_path}: missing 'splits' dict in manifest")
+    out: dict[str, list[str]] = {}
+    for split in ("train", "val", "test"):
+        ids = splits.get(split, [])
+        if not isinstance(ids, list):
+            raise ValueError(f"{manifest_path}: splits[{split!r}] must be a list")
+        out[split] = [str(x) for x in ids]
+    return out
+
+
+def _exclusive_split_from_reference(
+    reference_splits: dict[str, list[str]],
+    clip_ids: list[str],
+) -> dict[str, set[str]]:
+    """Map each clip to exactly one split, preferring test > val > train."""
+    all_ids = set(clip_ids)
+    test_ids = set(reference_splits.get("test", [])) & all_ids
+    val_ids = (set(reference_splits.get("val", [])) & all_ids) - test_ids
+    train_ids = all_ids - test_ids - val_ids
+    return {"train": train_ids, "val": val_ids, "test": test_ids}
+
+
+def _split_clip_ids(clip_ids: list[str], val_ratio: float, test_ratio: float, seed: int) -> dict[str, set[str]]:
+    if val_ratio < 0 or test_ratio < 0:
+        raise ValueError("val_ratio and test_ratio must be non-negative")
+    if val_ratio + test_ratio >= 1.0:
+        raise ValueError("val_ratio + test_ratio must be < 1.0")
+    rng = random.Random(seed)
+    # Split over unique clip IDs so each logical clip lands in exactly one split.
+    ids = list(dict.fromkeys(clip_ids))
+    rng.shuffle(ids)
+    n = len(ids)
+    # Floor counts so train absorbs rounding remainder (~80/10/10 for default ratios).
+    n_test = int(n * test_ratio)
+    n_val = int(n * val_ratio)
+    if n_test + n_val > n:
+        n_val = max(0, n - n_test)
+    test_ids = set(ids[:n_test])
+    val_ids = set(ids[n_test : n_test + n_val])
+    train_ids = set(ids[n_test + n_val :])
+    return {"train": train_ids, "val": val_ids, "test": test_ids}
+
+
+def _split_window_indices(num_windows: int, val_ratio: float, test_ratio: float, seed: int) -> dict[str, set[int]]:
+    if val_ratio < 0 or test_ratio < 0:
+        raise ValueError("val_ratio and test_ratio must be non-negative")
+    if val_ratio + test_ratio >= 1.0:
+        raise ValueError("val_ratio + test_ratio must be < 1.0")
+    rng = random.Random(seed)
+    ids = list(range(num_windows))
+    rng.shuffle(ids)
+    n_test = int(num_windows * test_ratio)
+    n_val = int(num_windows * val_ratio)
+    if n_test + n_val > num_windows:
+        n_val = max(0, num_windows - n_test)
+    test_ids = set(ids[:n_test])
+    val_ids = set(ids[n_test : n_test + n_val])
+    train_ids = set(ids[n_test + n_val :])
+    return {"train": train_ids, "val": val_ids, "test": test_ids}
+
+
+def _write_posemamba_split(samples: list[dict], split_dir: Path, use_confidence: bool) -> None:
+    split_dir.mkdir(parents=True, exist_ok=True)
+    for stale in split_dir.glob("*.pkl"):
+        stale.unlink()
+    for i, sample in enumerate(samples):
+        k2d = sample["kpts2d"]
+        if use_confidence:
+            model_input = np.concatenate([k2d, sample["kpts2d_conf"][..., None]], axis=-1).astype(np.float32)
+        else:
+            model_input = k2d.astype(np.float32)
+        payload = {
+            "data_input": model_input,
+            "data_label": sample["kpts3d_cam"].astype(np.float32),
+            "dynamics_gt": {
+                "steer_deg": sample["steer_deg"].astype(np.float32),
+                "roll_deg": sample["roll_deg"].astype(np.float32),
+            },
+            "meta": {
+                **sample.get("meta", {"clip_id": sample["clip_id"]}),
+                "window_index": i,
+                "dynamics_units": {"steer_deg": "deg", "roll_deg": "deg"},
+            },
+        }
+        with (split_dir / f"{sample['clip_id']}_{i:06d}.pkl").open("wb") as f:
+            pickle.dump(payload, f)
+
+
+def build_sequences(args: argparse.Namespace) -> None:
+    raw_root = args.raw_root
+    clip_dirs = [path for path in sorted(raw_root.iterdir()) if path.is_dir() and (path / "keypoints_3d.jsonl").exists()]
+    if not clip_dirs:
+        raise RuntimeError(f"No clips with keypoints_3d.jsonl found in {raw_root}")
+
+    clips = [
+        _read_clip(path, input_2d=args.input_2d, bbox_source=args.bbox_source)
+        for path in clip_dirs
+    ]
+    split_samples: dict[str, list[dict]] = {"train": [], "val": [], "test": []}
+    windows_per_source_clip: dict[str, int] = {}
+    split_map: dict[str, set[str]] = {"train": set(), "val": set(), "test": set()}
+    if args.split_mode == "clip":
+        if args.reference_split_manifest is not None:
+            ref_splits = _load_reference_splits(args.reference_split_manifest.resolve())
+            split_map = _exclusive_split_from_reference(ref_splits, [clip.clip_id for clip in clips])
+        else:
+            split_map = _split_clip_ids([clip.clip_id for clip in clips], args.val_ratio, args.test_ratio, args.seed)
+        split_stride = {
+            "train": args.stride,
+            "val": args.eval_stride,
+            "test": args.eval_stride,
+        }
+        for clip in clips:
+            split = "train"
+            if clip.clip_id in split_map["val"]:
+                split = "val"
+            elif clip.clip_id in split_map["test"]:
+                split = "test"
+            stride = split_stride[split]
+            windows = _slice_clip(clip, args.window_size, stride, args.slice_style)
+            windows_per_source_clip[clip.clip_id] = len(windows)
+            split_samples[split].extend(windows)
+    else:
+        all_windows: list[dict] = []
+        for clip in clips:
+            windows = _slice_clip(clip, args.window_size, args.stride, args.slice_style)
+            windows_per_source_clip[clip.clip_id] = len(windows)
+            all_windows.extend(windows)
+        window_split = _split_window_indices(len(all_windows), args.val_ratio, args.test_ratio, args.seed)
+        for idx, sample in enumerate(all_windows):
+            split = "train"
+            if idx in window_split["val"]:
+                split = "val"
+            elif idx in window_split["test"]:
+                split = "test"
+            split_samples[split].append(sample)
+        for split_name, samples in split_samples.items():
+            split_map[split_name] = {str(sample["clip_id"]) for sample in samples}
+
+    out_root = args.output_root
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    for split, samples in split_samples.items():
+        if not samples:
+            continue
+        npz_payload = {
+            "kpts2d": np.asarray([sample["kpts2d"] for sample in samples], dtype=np.float32),
+            "kpts2d_conf": np.asarray([sample["kpts2d_conf"] for sample in samples], dtype=np.float32),
+            "kpts3d_cam": np.asarray([sample["kpts3d_cam"] for sample in samples], dtype=np.float32),
+            "valid_mask": np.asarray([sample["valid_mask"] for sample in samples], dtype=np.uint8),
+            "K": np.asarray([sample["K"] for sample in samples], dtype=np.float32),
+            "R": np.asarray([sample["R"] for sample in samples], dtype=np.float32),
+            "t": np.asarray([sample["t"] for sample in samples], dtype=np.float32),
+            "image_wh": np.asarray([sample["image_wh"] for sample in samples], dtype=np.int32),
+            "frame_idx": np.asarray([sample["frame_idx"] for sample in samples], dtype=np.int32),
+            "clip_id": np.asarray([sample["clip_id"] for sample in samples]),
+            "steer_deg": np.asarray([sample["steer_deg"] for sample in samples], dtype=np.float32),
+            "roll_deg": np.asarray([sample["roll_deg"] for sample in samples], dtype=np.float32),
+        }
+        np.savez_compressed(out_root / f"sequences_{split}.npz", **npz_payload)
+
+    posemamba_name = _posemamba_subdir_name(args.window_size, args.stride, args.dataset_tag)
+    posemamba_subset = out_root / posemamba_name / "BICYCLE"
+    _write_posemamba_split(split_samples["train"], posemamba_subset / "train", use_confidence=args.use_confidence)
+    _write_posemamba_split(split_samples["val"], posemamba_subset / "val", use_confidence=args.use_confidence)
+    _write_posemamba_split(split_samples["test"], posemamba_subset / "test", use_confidence=args.use_confidence)
+
+    split_clip_counts = {k: len(v) for k, v in split_map.items()}
+    window_counts = list(windows_per_source_clip.values())
+    if args.input_2d == "detected":
+        if args.bbox_source == "detection":
+            input_2d_source = "rtmpose_detection_bbox"
+        elif args.bbox_source == "gt":
+            input_2d_source = "rtmpose_full_image"
+        else:
+            input_2d_source = "rtmpose_keypoint_bbox"
+    elif args.bbox_source == "gt":
+        input_2d_source = "gt_projection_gt_bbox"
+    elif args.bbox_source == "keypoints":
+        input_2d_source = "gt_projection_keypoint_bbox"
+    elif args.bbox_source == "detection":
+        input_2d_source = "gt_projection_detection_bbox"
+    else:
+        input_2d_source = "gt_projection"
+    manifest = {
+        "joint_names": BICYCLE_KEYPOINT_NAMES,
+        "window_size": args.window_size,
+        "stride_train": args.stride,
+        "stride_val_test": args.eval_stride,
+        "slice_style": args.slice_style,
+        "raw_root": str(raw_root.resolve()),
+        "dataset_tag": args.dataset_tag,
+        "input_2d": args.input_2d,
+        "input_2d_source": input_2d_source,
+        "bbox_source": args.bbox_source,
+        "posemamba_subdir": posemamba_name,
+        "note": (
+            "Offline stride matches PoseMamba convert_h36m (contiguous [st:st+T), st+=stride). "
+            "YAML data_stride is inert for bicycle training (pre-sliced pickles). "
+            "On 243-frame-only raw clips expect 1 train window; use FRAMES>=729 for more."
+        ),
+        "windows_per_source_clip": {
+            "min": int(min(window_counts)) if window_counts else 0,
+            "max": int(max(window_counts)) if window_counts else 0,
+            "mean": float(np.mean(window_counts)) if window_counts else 0.0,
+            "histogram": dict(sorted({c: window_counts.count(c) for c in set(window_counts)}.items())),
+        },
+        "split_sample_counts": {k: len(v) for k, v in split_samples.items()},
+        "split_ratios": {
+            "val": args.val_ratio,
+            "test": args.test_ratio,
+            "train_implied": max(0.0, 1.0 - args.val_ratio - args.test_ratio),
+        },
+        "split_mode": args.split_mode,
+        "reference_split_manifest": (
+            str(args.reference_split_manifest.resolve()) if args.reference_split_manifest else None
+        ),
+        "split_clip_counts": split_clip_counts,
+        "splits": {k: sorted(list(v)) for k, v in split_map.items()},
+        "normalization": "bbox_center_scale",
+        "coord_frame_target": "camera",
+        "dynamics_gt": ["steer_deg", "roll_deg"],
+    }
+    with (out_root / "meta.json").open("w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+    with (out_root / posemamba_name / "dataset_manifest.json").open("w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+
+    run_qa(out_root)
+
+
+def run_qa(output_root: Path) -> None:
+    for split in ("train", "val", "test"):
+        path = output_root / f"sequences_{split}.npz"
+        if not path.exists():
+            continue
+        data = np.load(path, allow_pickle=True)
+        J = len(BICYCLE_KEYPOINT_NAMES)
+        for key in (
+            "kpts2d",
+            "kpts2d_conf",
+            "kpts3d_cam",
+            "valid_mask",
+            "frame_idx",
+            "clip_id",
+            "steer_deg",
+            "roll_deg",
+        ):
+            if key not in data:
+                raise ValueError(f"{path.name} missing required key {key}")
+        if data["kpts2d"].shape[2] != J or data["kpts3d_cam"].shape[2] != J:
+            raise ValueError(f"{path.name} has wrong joint dimension.")
+        if data["kpts2d"].shape[1] != data["kpts3d_cam"].shape[1]:
+            raise ValueError(f"{path.name} has inconsistent temporal dimensions.")
+        if data["steer_deg"].shape[1] != data["kpts3d_cam"].shape[1]:
+            raise ValueError(f"{path.name} has steer_deg / pose temporal mismatch.")
+
+    posemamba_dirs = sorted(output_root.glob("PoseMamba_f*"))
+    for posemamba_dir in posemamba_dirs:
+        for split in ("train", "val", "test"):
+            split_dir = posemamba_dir / "BICYCLE" / split
+            if not split_dir.is_dir():
+                continue
+            for pkl_path in sorted(split_dir.glob("*.pkl")):
+                with pkl_path.open("rb") as handle:
+                    payload = pickle.load(handle)
+                dynamics = payload.get("dynamics_gt")
+                if not isinstance(dynamics, dict):
+                    raise ValueError(f"{pkl_path} missing dynamics_gt")
+                steer = dynamics.get("steer_deg")
+                if steer is None or np.asarray(steer).shape[0] != payload["data_label"].shape[0]:
+                    raise ValueError(f"{pkl_path} has invalid dynamics_gt.steer_deg")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Build PoseMamba-ready sequence dataset from synthetic clips.")
+    parser.add_argument("--raw-root", type=Path, default=Path("raw_renders"))
+    parser.add_argument("--output-root", type=Path, default=Path("data/posemamba_sequences"))
+    parser.add_argument(
+        "--window-size",
+        type=int,
+        default=243,
+        help="Frames per PoseMamba sample (T); sets output folder PoseMamba_f{W}s{S}.",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=81,
+        help="Contiguous window start stride for train split (same as convert_h36m data_stride_train).",
+    )
+    parser.add_argument(
+        "--eval-stride",
+        type=int,
+        default=243,
+        help="Window stride for val/test splits (H36M test uses 243 = non-overlapping).",
+    )
+    parser.add_argument(
+        "--slice-style",
+        choices=("contiguous", "legacy_center"),
+        default="contiguous",
+        help="contiguous uses PoseMamba split_clips; legacy_center keeps old center-padded windows.",
+    )
+    parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--val-ratio", type=float, default=0.1)
+    parser.add_argument("--test-ratio", type=float, default=0.1)
+    parser.add_argument(
+        "--split-mode",
+        choices=("clip", "window"),
+        default="clip",
+        help="clip: keep each clip in one split; window: split sliced windows across train/val/test.",
+    )
+    parser.add_argument(
+        "--reference-split-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Optional dataset_manifest.json from a reference corpus (e.g. PoseMamba_f243s81_detected2d). "
+            "When split-mode=clip, reuse its train/val/test clip IDs so window ablations share the same test clips."
+        ),
+    )
+    parser.add_argument("--use-confidence", action="store_true")
+    parser.add_argument("--qa-only", action="store_true")
+    parser.add_argument(
+        "--input-2d",
+        choices=("gt", "detected"),
+        default="gt",
+        help="gt: projected 2D from annotations; detected: RTMPose sidecar JSON.",
+    )
+    parser.add_argument(
+        "--bbox-source",
+        choices=("gt", "keypoints", "detection"),
+        default="gt",
+        help=(
+            "Normalization bbox: gt_bbox_xywh, tight keypoint box, or RF-DETR det_bbox_xyxy "
+            "from detected sidecars (use detection with --input-2d detected for full pipeline match)."
+        ),
+    )
+    parser.add_argument(
+        "--dataset-tag",
+        default=None,
+        help="Optional suffix on PoseMamba_f{W}s{S} folder (e.g. detected2d).",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = parse_args()
+    if args.qa_only:
+        run_qa(args.output_root)
+        return
+    build_sequences(args)
+
+
+if __name__ == "__main__":
+    main()
+

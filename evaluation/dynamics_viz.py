@@ -13,7 +13,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-_SCRIPT_3D = REPO_ROOT / "3d_keypoint_detector_training"
+_SCRIPT_3D = REPO_ROOT / "training" / "pose3d"
 if str(_SCRIPT_3D) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_3D))
 

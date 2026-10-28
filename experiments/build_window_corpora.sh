@@ -33,7 +33,7 @@ STRIDE_DIVISOR="${STRIDE_DIVISOR:-3}"
 SPLIT_SEED="${SPLIT_SEED:-7}"
 FORCE_REBUILD="${FORCE_REBUILD:-0}"
 CONDA_ENV="${CONDA_ENV:-posemamba}"
-BUILD_SCRIPT="${REPO_ROOT}/3d_keypoint_detector_training/build_sequences.py"
+BUILD_SCRIPT="${REPO_ROOT}/training/pose3d/build_sequences.py"
 
 run_python() {
   if [[ "${CONDA_DEFAULT_ENV:-}" == "${CONDA_ENV}" ]]; then

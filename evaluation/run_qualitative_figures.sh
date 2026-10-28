@@ -44,7 +44,7 @@ if [[ "${SKIP_PIPELINE}" != "1" ]]; then
     clip_name="$(basename "${clip_dir}")"
     out_dir="${PIPELINE_ROOT}/${clip_name}"
     echo "[qualitative-figures] pipeline -> ${clip_name}"
-    bash "${REPO_ROOT}/1_full_detection_pipeline/run_full_pipeline.sh" \
+    bash "${REPO_ROOT}/inference/run_pipeline.sh" \
       --frames-dir "${clip_dir}/frames" \
       --output-dir "${out_dir}" \
       --lifter-checkpoint "${LIFTER_CHECKPOINT}" \
@@ -52,7 +52,7 @@ if [[ "${SKIP_PIPELINE}" != "1" ]]; then
       --no-visualize \
       --resume
 
-    conda run -n mmpose python "${REPO_ROOT}/1_full_detection_pipeline/visualize_intermediates.py" \
+    conda run -n mmpose python "${REPO_ROOT}/inference/visualize_intermediates.py" \
       --output-dir "${out_dir}" \
       --stages 2d \
       --no-video \
