@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build oracle (GT-projected 2D) PoseMamba evaluation corpus.
+# Build GT-projected 2D PoseMamba evaluation corpus.
 #
 # Produces PoseMamba_f243s81/BICYCLE/test/ with bbox-normalized GT 2D in
 # data_input. The test split is built from the detected-2D reference pickles, so
@@ -73,7 +73,7 @@ print(
 PY
 )"
   if [[ "${ok}" == "ok" ]]; then
-    echo "[skip] GT-2D oracle test corpus OK at ${test_dir}"
+    echo "[skip] GT-2D test corpus OK at ${test_dir}"
     exit 0
   fi
   echo "[rebuild] GT-2D test corpus needs refresh -> ${test_dir}"
@@ -115,4 +115,4 @@ print(f"[done] bbox_source={manifest.get('bbox_source')}")
 PY
 fi
 
-echo "[done] GT-2D oracle test corpus ready at ${test_dir}"
+echo "[done] GT-2D test corpus ready at ${test_dir}"

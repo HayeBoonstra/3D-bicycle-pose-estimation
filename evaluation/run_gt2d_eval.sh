@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Run oracle (GT-2D) 3D lifting evaluation for capacity S/B/L/X checkpoints.
+# Run GT-2D 3D lifting evaluation for capacity S/B/L/X checkpoints.
 #
 # Isolates PoseMamba lifter error from RF-DETR + RTMPose front-end error by lifting
 # bbox-normalized GT-projected 2D keypoints instead of detected 2D.
 #
 # Prerequisites:
-#   1. Oracle corpus: ./experiments/build_gt2d_corpus.sh
+#   1. corpus: ./experiments/build_gt2d_corpus.sh
 #   2. Trained checkpoints: posemamba_weights/capacity_{s,b,l,x}/best_epoch.bin
 #
 # Usage:

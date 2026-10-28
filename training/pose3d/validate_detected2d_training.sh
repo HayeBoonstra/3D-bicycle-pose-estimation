@@ -42,7 +42,7 @@ if [[ -d "${VAL_DIR}" ]] && [[ -n "$(ls -A "${VAL_DIR}"/*.pkl 2>/dev/null || tru
   echo "[validate] val pickles present at ${VAL_DIR}"
 fi
 
-echo "[validate] full pipeline on Swapfiets input_sequence"
+echo "[validate] full pipeline on input_sequence"
 "${REPO_ROOT}/inference/run_pipeline.sh" \
   --frames-dir "${REPO_ROOT}/inference/input_sequence" \
   --output-dir "${REPO_ROOT}/inference/output_detected2d_val" \
